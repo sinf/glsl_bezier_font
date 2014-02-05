@@ -9,7 +9,7 @@
 #pragma pack(1)
 
 /* Used by font_file.c, read_simple_glyph(). Implemented in triangulate.c */
-extern void triangulate_contours( GlyphTriangles *gt, uint8 point_flags[], float points[], uint16 end_points[], uint32 num_contours );
+extern int triangulate_contours( GlyphTriangles *gt, uint8 point_flags[], float points[], uint16 end_points[], uint32 num_contours );
 
 enum {
 	/* enable/disable debug messages */

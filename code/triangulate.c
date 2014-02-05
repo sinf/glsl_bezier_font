@@ -2,6 +2,7 @@
 #include "types.h"
 #include "font_data.h"
 #include "opentype.h"
+#include "linkedlist.h"
 
 /* The contour triangulation process
 
@@ -31,112 +32,44 @@ Oletukset
 		// muodosta kolmioverkko (leikkaamattomien) ääriviivojen (A.sisä) ja (A.lapset[]) välille
 */
 
-struct Point;
-typedef struct Point Point;
-struct Point {
-	Point *prev, *next;
-	uint32 index;
-};
-
-/* Cyclic linked list */
-typedef struct {
-	Point *head, *tail;
-	uint32 num_points;
-} PointList;
-
-static const PointList EMPTY_POINT_LIST = {NULL,NULL,0};
-
 enum {
 	/* memory limits */
-	MAX_CONTOURS = 128,
-	MAX_CONTOUR_HOLES = 127
+	MAX_CONTOURS = 80, /* max contours per glyph */
+	MAX_HOLES = 32, /* max holes per polygon */
+	MAX_POINTS = 512 /* max points per contour */
 };
 
 typedef struct {
-	PointList all, outer, inner; /* inner and outer are polylines that can be used to connect this contour to some other contour with triangles */
-	uint32 inc_depth; /* how deep in the hierarchy this contour is (hole inside hole inside hole....) */
-	uint8 num_inc; /* number of valid items in inc */
-	uint8 inc[MAX_CONTOUR_HOLES]; /* indices of contours that are inside this contour */
+	LinkedList points;
+	uint8 depth;
+	uint8 num_holes;
+	uint8 holes[MAX_HOLES]; /* indices of other contours */
 } Contour;
 
-static Point *add_point( PointList *list, uint32 index )
+/* Returns some point that is on the contour or ~0 on failure */
+static uint16 get_on_curve_point( Contour c[1], uint8 flags[] )
 {
-	Point *pt = calloc( sizeof(Point), 1 );
-	
-	if ( !pt )
-		return NULL;
-	
-	pt->index = index;
-	
-	if ( list->head )
+	uint16 pt = 0xFFFF;
+	if ( LL_HAS_NODES( c->points ) )
 	{
-		pt->next = list->head;
-		list->head->prev = pt;
+		LLNodeID cur, start;
+		cur = start = c->points.root_index;
+		do {
+			if ( flags[ cur ] & PT_ON_CURVE )
+			{
+				pt = cur;
+				break;
+			}
+			cur = LL_NEXT( c->points, cur );
+		} while( cur != start );
 	}
-	else
-	{
-		list->head = pt;
-		pt->next = pt;
-	}
-	
-	if ( list->tail )
-	{
-		pt->prev = list_tail;
-		list->tail->next = pt;
-	}
-	else
-		pt->prev = pt;
-	
-	list->tail = pt;
-	list->num_points++;
-	
 	return pt;
-}
-
-static void remove_point( PointList *list, Point *p )
-{
-	Point *prev=p->prev, *next=p->next;
-	if ( next == prev ) {
-		list->head = list->tail = NULL;
-	} else {
-		if ( prev ) prev->next = next;
-		if ( next ) next->prev = prev;
-		if ( p == list->head ) list->head = next;
-		if ( p == list->tail ) list->tail = prev;
-	}
-	list->num_points--;
-	free( p );
-}
-
-static void delete_list( PointList *list )
-{
-	while( list->head )
-		remove_point( list, list->head );
 }
 
 static void split_consecutive_off_curve_points( Contour *c, uint8 point_flags[] )
 {
-	Point *p, *start;
-	uint32 num_off = 0;
-	
-	start = p = c->all.head;
-	
-	do {
-		uint8 prev_on = point_flags[ p->prev->index ] & PT_ON_CURVE;
-		uint8 next_on = point_flags[ p->next->index ] & PT_ON_CURVE;
-		uint8 this_on = point_flags[ p->index ] & PT_ON_CURVE;
-		
-		
-		if ( !( point_flags[ p->index ] & PT_ON_CURVE ) )
-			num_off++;
-		if ( num_off == 2 )
-		{
-			/* split between p->prev and p */
-		}
-		p = p->next;
-	} while( p != start );
-	
 	/* todo */
+	(void) point_flags;
 	(void) c;
 }
 
@@ -154,63 +87,69 @@ static int contour_contains_point( Contour *c, float p[2] )
 	return 0;
 }
 
-void triangulate_contours( GlyphTriangles *gt, uint8 point_flags[], float points[], uint16 end_points[], uint32 num_contours )
+int triangulate_contours( GlyphTriangles *gt, uint8 point_flags[], float points[], uint16 end_points[], uint32 num_contours )
 {
+	LLNode con_node_pools[MAX_CONTOURS][MAX_POINTS];
 	Contour con[MAX_CONTOURS];
-	uint16 on_curve_point[MAX_CONTOURS]; /* 1 on-curve point per contour */
 	uint16 start=0, end, c, d, p;
 	
-	/* Construct linked lists for convenience */
+	/* Construct a linked list for each contour */
 	for( c=0; c<num_contours; c++ )
 	{
 		end = end_points[c];
-		con[c].all = con[c].outer = con[c].inner = EMPTY_POINT_LIST;
-		con[c].inc_depth = con[c].num_inc = 0;
-		/* Put all contour points into a linked list */
+		
+		if ( end > MAX_POINTS )
+			return 0;
+		
+		init_list( &con[c].points, con_node_pools[c], MAX_POINTS );
+		con[c].depth = 0;
+		con[c].num_holes = 0;
+		
 		for( p=start; p<=end; p++ )
-			add_point( &con[c].all, p );
-		/* Find the first on-curve point (default to the first point if there are no on-curve points) */
-		on_curve_point[c] = start;
-		for( p=start; p<=end; p++ ) {
-			if ( point_flags[p] & PT_ON_CURVE ) {
-				on_curve_point[c] = p;
-				break;
-			}
-		}
+			add_node_x( &con[c].points, p );
+		
 		start = end;
 	}
 	
 	/* 1. Preprocess */
 	for( c=0; c<num_contours; c++ )
 	{
-		Contour *C = con+c;
+		Contour *c1 = con + c;
 		
 		/* Make sure that there are no 2 consecutive off-curve points anywhere */
-		split_consecutive_off_curve_points( C );
+		split_consecutive_off_curve_points( c1, point_flags );
 		
 		/* Find 2 polylines that can later be used to connect the contour to other contours */
-		find_inner_outer( C );
+		find_inner_outer( c1 );
 		
 		/* Determine which contour contains which contour */
 		for( d=0; d<num_contours; d++ )
 		{
-			Contour *D = con+d;
+			Contour *c2 = con + d;
 			
-			if ( c == d )
+			if ( c1== c2 )
 				continue;
 			
 			/*
-			If contour C contains at least 1 point of D,
-			and no contours intersect, then C must contain all points in D
+			If c1 contains at least 1 point of c2 then c1 must contain all the points of c2.
+			This is because we assume that no contours intersect.
 			*/
 			
-			if ( contour_contains_point( C, points + 2 * on_curve_point[d] ) )
+			p = get_on_curve_point( c2, point_flags );
+			
+			if ( p == 0xFFFF ) {
+				/* c2 doesn't contain any on-curve points and is therefore invalid */
+				return 0;
+			}
+			
+			if ( contour_contains_point( c1, points + 2 * p ) )
 			{
-				if ( C->num_inc == MAX_CONTOUR_HOLES ) {
-					/* error */
+				if ( c1->num_holes == MAX_HOLES ) {
+					/* too many holes */
+					return 0;
 				} else {
-					C->inc[ C->num_inc++ ] = d;
-					D->inc_depth++;
+					c1->holes[ c1->num_holes++ ] = d;
+					c2->depth++;
 				}
 			}
 		}
@@ -219,47 +158,32 @@ void triangulate_contours( GlyphTriangles *gt, uint8 point_flags[], float points
 	/* 2. Triangulate */
 	for( c=0; c<num_contours; c++ )
 	{
-		if ( con[c].num_inc )
+		if ( ( con[c].depth & 1 ) == 0 )
 		{
-			if ( ( con[c].inc_depth & 1 ) == 0 )
+			/* The contour is an exterior (ulkoreuna)
+			*/
+			
+			if ( con[c].num_holes )
 			{
-				/* Polygon has holes in it
-				Connect
-					con[c].inner
-				and
-					con[ con[c].inc[n] ].outer ( where n goes from 0 to con[c].num_inc )
-				Using triangles.
-				This is tricky
+				/* A solid blob which contains holes
+				todo:
+					triangulate a (potentially concave) polygon with (potentially concave) holes in it
+					(access holes via con[c].num_holes and con[c].holes)
 				*/
 			}
 			else
 			{
-				/* Hole within a hole */
+				/* A solid blob
+				todo:
+					triangulate a (potentially concave) polygon
+				*/
 			}
 		}
 		else
 		{
-			if ( con[c].inc_depth == 0 )
-			{
-				/* Contour is not included by any other contour. Therefore it represents a solid blob.
-				=> Triangulate a (potentially) concave polygon
-				*/
-			}
-			else
-			{
-				/* Contour is included by some other contour, which means this contour represents a hole
-				This case is already handled above
-				*/
-			}
+			/* The contour is an interior (sisäreuna)
+			This case is already handled above */
 		}
-	}
-	
-	/* 3. Clean up the mess */
-	for( c=0; c<num_contours; c++ )
-	{
-		delete_list( &con[c].all );
-		delete_list( &con[c].outer );
-		delete_list( &con[c].inner );
 	}
 	
 	gt->num_points_total = gt->num_points_orig = end_points[ num_contours - 1 ] + 1;
@@ -270,4 +194,6 @@ void triangulate_contours( GlyphTriangles *gt, uint8 point_flags[], float points
 	gt->end_points = end_points;
 	gt->indices = NULL;
 	gt->points = points;
+	
+	return 1;
 }

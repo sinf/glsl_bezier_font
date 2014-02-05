@@ -2,8 +2,8 @@
 #define _linkedlist_H
 #include "types.h"
 
-typedef uint8 LLNodeID; /* sets a hard limit on linked list size */
-#define LL_BAD_INDEX (~((LL_NodeID)0))
+typedef uint16 LLNodeID; /* sets a hard limit on linked list size */
+#define LL_BAD_INDEX 0xFFFF
 
 typedef struct {
 	LLNodeID prev, next;
@@ -11,10 +11,10 @@ typedef struct {
 
 typedef struct {
 	LLNode *pool; /* pointer to the node pool */
-	LLNodeID num_empty, /* how many nodes in the 'empty' list */
-	num_full, /* how many nodes in the 'full' list */
-	root_empty, /* root node index in the empty list */
-	root_full, /* root node index in the full list */
+	LLNodeID
+	num_nodes, /* how many nodes in the "full" list */
+	root_index_empty, /* root node of the "empty" list. Equal to LL_BAD_INDEX if the list is full */
+	root_index, /* root node of the "full" list. Use this to iterate the list. Equal to LL_BAD_INDEX if the list is empty */
 	pool_size; /* maximum number of nodes in either list */
 } LinkedList;
 
@@ -25,8 +25,15 @@ void init_list( LinkedList list[1], LLNode *pool, LLNodeID max_nodes );
 /* Removes a node from the list */
 void pop_node( LinkedList list[1], LLNodeID node );
 
-/* Adds a node. Returns LL_BAD_INDEX on failure */
-LLNodeID add_node( LinkedList list[1] );
+/* Moves a node at given index from the "empty" list to "full" list. The given index MUST belong to the "empty" list. Returns LL_BAD_INDEX if the list is already full */
+LLNodeID add_node_x( LinkedList list[1], LLNodeID index );
+
+/* Adds a new node. Returns LL_BAD_INDEX on failure */
+#define add_node( list ) add_node_x( (list), (list)->root_index_empty )
+
+#define LL_HAS_NODES( list ) (( (list).num_nodes != 0 ))
+#define LL_PREV( list, node_index ) ((list).pool[(node_index)].prev)
+#define LL_NEXT( list, node_index ) ((list).pool[(node_index)].next)
 
 /**
 void example()

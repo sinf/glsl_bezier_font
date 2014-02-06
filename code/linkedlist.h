@@ -5,6 +5,7 @@
 typedef uint16 LLNodeID; /* sets a hard limit on linked list size */
 #define LL_BAD_INDEX 0xFFFF
 
+/* Note: the list is cyclic. Both prev and next will point to the same node if the list has only one node */
 typedef struct {
 	LLNodeID prev, next;
 } LLNode;

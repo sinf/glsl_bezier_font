@@ -34,9 +34,9 @@ Oletukset
 
 enum {
 	/* memory limits */
-	MAX_CONTOURS = 80, /* max contours per glyph */
+	MAX_CONTOURS = 128, /* max contours per glyph (FreeMono.ttf has 120) */
 	MAX_HOLES = 32, /* max holes per polygon */
-	MAX_POINTS = 512 /* max points per contour */
+	MAX_POINTS = 512 /* max points per contour (FreeMono.ttf has 480) */
 };
 
 typedef struct {
@@ -66,17 +66,33 @@ static uint16 get_on_curve_point( Contour c[1], uint8 flags[] )
 	return pt;
 }
 
-static void split_consecutive_off_curve_points( Contour *c, uint8 point_flags[] )
+static void split_consecutive_off_curve_points( Contour *co, uint8 point_flags[] )
 {
-	/* todo */
-	(void) point_flags;
-	(void) c;
-}
-
-static void find_inner_outer( Contour *c )
-{
-	/* todo */
-	(void) c;
+	LLNodeID a, b, c, d, start;
+	
+	if ( co->points.num_nodes < 4 )
+		return;
+	
+	a = start = co->points.root_index;
+	do {
+		b = LL_NEXT( co->points, a );
+		c = LL_NEXT( co->points, b );
+		d = LL_NEXT( co->points, c );
+		
+		a = ( point_flags[a] & PT_ON_CURVE );
+		b = ( point_flags[b] & PT_ON_CURVE );
+		c = ( point_flags[c] & PT_ON_CURVE );
+		d = ( point_flags[d] & PT_ON_CURVE );
+		
+		if ( a && !b && !c && d )
+		{
+			/* on-off-off-on
+			todo: split between b and c
+			*/
+		}
+		
+		a = b;
+	} while( a != start );
 }
 
 static int contour_contains_point( Contour *c, float p[2] )
@@ -119,9 +135,6 @@ int triangulate_contours( GlyphTriangles *gt, uint8 point_flags[], float points[
 		/* Make sure that there are no 2 consecutive off-curve points anywhere */
 		split_consecutive_off_curve_points( c1, point_flags );
 		
-		/* Find 2 polylines that can later be used to connect the contour to other contours */
-		find_inner_outer( c1 );
-		
 		/* Determine which contour contains which contour */
 		for( d=0; d<num_contours; d++ )
 		{
@@ -161,13 +174,17 @@ int triangulate_contours( GlyphTriangles *gt, uint8 point_flags[], float points[
 		if ( ( con[c].depth & 1 ) == 0 )
 		{
 			/* The contour is an exterior (ulkoreuna)
+			todo:
+				- find the interior polygon of this contour, adding triangles at curves in the process
 			*/
 			
 			if ( con[c].num_holes )
 			{
 				/* A solid blob which contains holes
 				todo:
-					triangulate a (potentially concave) polygon with (potentially concave) holes in it
+					- triangulate a (potentially concave) polygon with (potentially concave) holes in it
+					- test if this contour intersects any of the holes and subdivide the intersections
+					- find the exterior polygons of the holes
 					(access holes via con[c].num_holes and con[c].holes)
 				*/
 			}

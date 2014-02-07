@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include "types.h"
 #include "font_data.h"
@@ -50,10 +51,10 @@ typedef struct {
 static uint16 get_on_curve_point( Contour c[1], uint8 flags[] )
 {
 	uint16 pt = 0xFFFF;
-	if ( LL_HAS_NODES( c->points ) )
+	if ( c->points.length > 0 )
 	{
 		LLNodeID cur, start;
-		cur = start = c->points.root_index;
+		cur = start = c->points.root;
 		do {
 			if ( flags[ cur ] & PT_ON_CURVE )
 			{
@@ -66,33 +67,76 @@ static uint16 get_on_curve_point( Contour c[1], uint8 flags[] )
 	return pt;
 }
 
-static void split_consecutive_off_curve_points( Contour *co, uint8 point_flags[] )
+static void delta_vec( float out[2], float const a[2], float const b[2] )
+{
+	out[0] = b[0] - a[0];
+	out[1] = b[1] - a[1];
+}
+
+/*
+static void get_midpoint( float c[2], float const a[2], float const b[2] )
+{
+	c[0] = ( a[0] + b[0] ) / 2;
+	c[1] = ( a[1] + b[1] ) / 2;
+}
+*/
+
+/* Returns Z-component of the resulting vector (because X and Y would be zero) */
+static float cross2( float const a[2], float const b[2] ) {
+	return a[0] * b[1] - a[1] * b[0];
+}
+
+static int split_consecutive_off_curve_points( Contour *co, float coords[], uint8 point_flags[] )
 {
 	LLNodeID a, b, c, d, start;
 	
-	if ( co->points.num_nodes < 4 )
-		return;
+	a = start = co->points.root;
 	
-	a = start = co->points.root_index;
 	do {
 		b = LL_NEXT( co->points, a );
 		c = LL_NEXT( co->points, b );
 		d = LL_NEXT( co->points, c );
 		
-		a = ( point_flags[a] & PT_ON_CURVE );
-		b = ( point_flags[b] & PT_ON_CURVE );
-		c = ( point_flags[c] & PT_ON_CURVE );
-		d = ( point_flags[d] & PT_ON_CURVE );
-		
-		if ( a && !b && !c && d )
+		if ( ( point_flags[a] & PT_ON_CURVE )
+		&& !( point_flags[b] & PT_ON_CURVE )
+		&& !( point_flags[c] & PT_ON_CURVE )
+		&& ( point_flags[d] & PT_ON_CURVE ) )
 		{
 			/* on-off-off-on
-			todo: split between b and c
+			
+			If both off-curve points are on the same side of line AD, then they can be merged
+			Otherwise, a new point must be added
 			*/
+			
+			float *pa = coords + 2*a;
+			float *pb = coords + 2*b;
+			float *pc = coords + 2*c;
+			float *pd = coords + 2*d;
+			
+			float vab[2], vac[2], vad[2];
+			
+			delta_vec( vab, pa, pb );
+			delta_vec( vac, pa, pc );
+			delta_vec( vad, pa, pd );
+			
+			if ( cross2( vad, vab ) * cross2( vad, vac ) > 0 )
+			{
+				/* points B and C are on the same side of line AD. Therefore they can be merged */
+				printf( "%s:%s: todo: merge points\n", __FILE__, __func__ );
+			}
+			else
+			{
+				/* On different sides. A new point is needed.
+				Some fonts don't have even a single case of this point configuration, other fonts have a few */
+				printf( "%s:%s: todo: add a point\n", __FILE__, __func__ );
+			}
+			return 0;
 		}
 		
 		a = b;
 	} while( a != start );
+	
+	return 1;
 }
 
 static int contour_contains_point( Contour *c, float p[2] )
@@ -133,7 +177,11 @@ int triangulate_contours( GlyphTriangles *gt, uint8 point_flags[], float points[
 		Contour *c1 = con + c;
 		
 		/* Make sure that there are no 2 consecutive off-curve points anywhere */
-		split_consecutive_off_curve_points( c1, point_flags );
+		if ( !split_consecutive_off_curve_points( c1, points, point_flags ) )
+		{
+			/* Invalid geometry */
+			return 0;
+		}
 		
 		/* Determine which contour contains which contour */
 		for( d=0; d<num_contours; d++ )
@@ -151,7 +199,7 @@ int triangulate_contours( GlyphTriangles *gt, uint8 point_flags[], float points[
 			p = get_on_curve_point( c2, point_flags );
 			
 			if ( p == 0xFFFF ) {
-				/* c2 doesn't contain any on-curve points and is therefore invalid */
+				/* c2 doesn't contain any on-curve points and is therefore invalid. can not triangulate corrupt shit */
 				return 0;
 			}
 			

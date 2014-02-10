@@ -27,6 +27,8 @@ typedef enum {
 	F_FAIL_ALLOC, /* out of memory */
 	F_FAIL_INCOMPLETE, /* font lacks required information */
 	F_FAIL_IMPOSSIBLE, /* should never happen */
+	F_FAIL_TRIANGULATE, /* failed to triangulate geometry */
+	F_FAIL_BUFFER_LIMIT, /* some statically allocated buffer is too small */
 	NUM_FONT_STATUS_CODES
 } FontStatus;
 

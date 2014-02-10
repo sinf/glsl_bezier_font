@@ -20,9 +20,16 @@ Draw transformed/animated text
 Move all font loading stuff into a self-contained library
 */
 
+static enum {
+	CULL_OFF=0,
+	CULL_CW=1,
+	CULL_CCW=2
+} cull_mode = CULL_OFF;
+
+/* 0=solid, 1=wire, 2=even more wire */
+static int wire_mode = 0;
+
 static const char cam_file[] = "camera.dat";
-static int cull_mode = 0; /* 0=off, 1=back, 2=front */
-static int wire_mode = 0; /* 0=solid, 1=wire */
 
 /* the shader program */
 static GLuint prog = 0;
@@ -37,28 +44,57 @@ static Mat4 modelview = {0};
 static Mat4 mvp;
 static GLint mvp_loc;
 
-static char *the_font_filename = "/usr/share/fonts/truetype/droid/DroidSans.ttf";
+static char *the_font_filename;
 static Font the_font;
 
-static const uint32 TEST_CHAR_CODE = L'春'; /* L'å' */
+static int32 the_char_code = 0;
+static uint32 the_glyph_index = 0;
 
-static void test_char( Font *font, uint32 ch )
+enum { GLYPH_ARRAY_S = 128 };
+static float the_glyph_coords[GLYPH_ARRAY_S][GLYPH_ARRAY_S][2];
+
+static int lookup_test_char( Font *font, int32 cc )
 {
-	uint32 g;
 	SimpleGlyph *gh;
 	
-	g = get_cmap_entry( font, ch );
-	gh = font->glyphs[ g ];
+	if ( cc < 0 )
+	{
+		the_char_code = 0;
+		the_glyph_index = -cc;
+	}
+	else
+	{
+		the_char_code = cc;
+		the_glyph_index = get_cmap_entry( font, cc );
+		
+		if ( !the_glyph_index )
+			return 0;
+	}
 	
-	printf( "U+%04x glyph index %u\n", ch, (uint) g );
-	printf( "- gh %s\n", gh ? "exists" : "is null" );
+	gh = font->glyphs[ the_glyph_index ];
+	
+	printf( "U+%04x glyph index %u\n", (uint) cc, (uint) the_glyph_index );
 	
 	if ( gh ) {
 		if ( IS_SIMPLE_GLYPH( gh ) ) {
-			printf( "- is a simple glyph\n- total points: %u\n", gh->tris.num_points_total );
+			printf(
+			"- is a simple glyph\n"
+			"- total points: %hu\n"
+			"- indices/convex: %hu\n"
+			"- indices/concave: %hu\n"
+			"- indices/solid: %hu\n"
+			,
+			gh->tris.num_points_total,
+			gh->tris.num_indices_convex,
+			gh->tris.num_indices_concave,
+			gh->tris.num_indices_solid );
 		} else {
 			printf( "- is a composite glyph\n- subglyphs: %u\n", gh->num_parts );
 		}
+		return 1;
+	} else {
+		printf( "- no glyph found\n" );
+		return 0;
 	}
 }
 
@@ -82,6 +118,32 @@ static int load_resources( void )
 		return 0;
 	}
 	
+	if ( !lookup_test_char( &the_font, the_char_code ) )
+	{
+		printf( "Glyph not found\n" );
+		return 0;
+	}
+	else
+	{
+		int x, y;
+		
+		printf(
+			"Number of glyph instances (the grid) = %ux%u = %u\n"
+			"Batches = %u\n",
+			GLYPH_ARRAY_S, GLYPH_ARRAY_S,
+			GLYPH_ARRAY_S*GLYPH_ARRAY_S,
+			(GLYPH_ARRAY_S*GLYPH_ARRAY_S+2023)/2024 );
+		
+		for( y=0; y<GLYPH_ARRAY_S; y++ )
+		{
+			for( x=0; x<GLYPH_ARRAY_S; x++ )
+			{
+				the_glyph_coords[y][x][0] = x - GLYPH_ARRAY_S / 2;
+				the_glyph_coords[y][x][1] = y - GLYPH_ARRAY_S / 2;
+			}
+		}
+	}
+	
 	printf( "Glyph indices for characters A, M, P, B, j, \xc3\xa5: %u %u %u %u %u %u\n",
 		get_cmap_entry( &the_font, 'A' ),
 		get_cmap_entry( &the_font, 'M' ),
@@ -90,7 +152,6 @@ static int load_resources( void )
 		get_cmap_entry( &the_font, 'j' ),
 		get_cmap_entry( &the_font, 0xe5 ) );
 	
-	test_char( &the_font, TEST_CHAR_CODE );
 	#if 0
 	printf( "Done\n" );
 	exit( 0 );
@@ -163,88 +224,170 @@ static size_t generate_grid_floor( GLuint vao, GLuint vbo, size_t horz_lines, si
 
 static void repaint( void )
 {
-	enum { GLYPH_ARRAY_S = 128 };
-	static float w_pos[GLYPH_ARRAY_S][GLYPH_ARRAY_S][2];
+	int glyph_draw_flags = 0;
 	
-	float glyph_pos[2*4] = {
-		-2,.8,
-		-1,.8,
-		0,.8,
-		1,.8
-	};
-	float text_matr[16] = {
-		0.4, 0, 0, 0,
-		0, 0.4 * ( 800 / 600.0 ), 0, 0,
-		0, 0, 1, 0,
-		0, 0, 0, 1
-	};
-	static uint32 cc = ~0;
+	switch( wire_mode )
+	{
+		case 0:
+			glyph_draw_flags = F_DRAW_TRIS;
+			break;
+		case 1:
+			glyph_draw_flags = F_DRAW_TRIS | F_DEBUG_COLORS;
+			break;
+		case 2:
+			glyph_draw_flags = F_DRAW_POINTS | F_DRAW_OUTLINE | F_DRAW_SQUARE | F_DEBUG_COLORS;
+			break;
+		default:
+			assert(0);
+	}
 	
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 	
 	glUseProgram( prog );
 	glUniformMatrix4fv( mvp_loc, 1, GL_FALSE, mvp );
 	
-	/* Draw the floor */
-	glBindVertexArray( floor_buffers[0] );
-	glVertexAttrib3f( 1, 0, 0, 1 );
-	glVertexAttrib3f( 2, 0.25, 0.25, 0.25 );
-	glDrawArrays( GL_LINES, 0, num_floor_verts );
-	glBindVertexArray( 0 );
+	if ( 0 )
+	{
+		/* Draw the floor */
+		glBindVertexArray( floor_buffers[0] );
+		glVertexAttrib3f( 1, 0, 0, 1 );
+		glVertexAttrib3f( 2, 0.25, 0.25, 0.25 );
+		glDrawArrays( GL_LINES, 0, num_floor_verts );
+		glBindVertexArray( 0 );
+	}
 	
 	/* Draw other stuff */
 	
-	if ( !~cc )
-	{
-		int y, x;
-		
-		cc = get_cmap_entry( &the_font, TEST_CHAR_CODE );
-		
-		if ( cc == 0 )
-		{
-			cc = get_cmap_entry( &the_font, L'å' );
-			if ( cc == 0 )
-				cc = get_cmap_entry( &the_font, L'a' );
-		}
-		
-		printf(
-		"The character code = %u\n"
-		"Number of instances (the grid) = %ux%u = %u\n"
-		"Batches = %u\n",
-		cc,
-		GLYPH_ARRAY_S, GLYPH_ARRAY_S,
-		GLYPH_ARRAY_S*GLYPH_ARRAY_S,
-		(GLYPH_ARRAY_S*GLYPH_ARRAY_S+2023)/2024 );
-		
-		for( y=0; y<GLYPH_ARRAY_S; y++ )
-		{
-			for( x=0; x<GLYPH_ARRAY_S; x++ )
-			{
-				w_pos[y][x][0] = x - GLYPH_ARRAY_S / 2;
-				w_pos[y][x][1] = y - GLYPH_ARRAY_S / 2;
-			}
-		}
+	if ( cull_mode != CULL_OFF ) {
+		glCullFace( GL_FRONT );
+		glFrontFace( cull_mode == CULL_CW ? GL_CW : GL_CCW );
+		glEnable( GL_CULL_FACE );
 	}
 	
 	glPolygonOffset( -1, 1 );
 	glEnable( GL_POLYGON_OFFSET_FILL );
 	glEnable( GL_POLYGON_OFFSET_LINE );
 	glEnable( GL_POLYGON_OFFSET_POINT );
+	glEnable( GL_POLYGON_SMOOTH );
+	glEnable( GL_LINE_SMOOTH );
+	glHint( GL_POLYGON_SMOOTH_HINT, GL_NICEST );
+	glHint( GL_LINE_SMOOTH_HINT, GL_NICEST );
+	glPointSize( 4 ); /* obsolete but works anyway */
+	
+	glEnable( GL_BLEND );
+	glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
 	
 	begin_text( &the_font );
-	draw_glyphs( &the_font, text_matr, cc, 4, glyph_pos );
-	draw_glyphs( &the_font, mvp, cc, GLYPH_ARRAY_S*GLYPH_ARRAY_S, &w_pos[0][0][0] );
+	
+	if ( 0 )
+	{
+		uint32 g = get_cmap_entry( &the_font, L'䥎' );
+		
+		/* draw a huge array of the same glyph */
+		draw_glyphs( &the_font, mvp, g,
+			GLYPH_ARRAY_S*GLYPH_ARRAY_S,
+			&the_glyph_coords[0][0][0],
+			wire_mode ? glyph_draw_flags : F_DRAW_TRIS );
+		
+		if ( wire_mode == 1 )
+		{
+			glDisable( GL_DEPTH_TEST );
+			glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
+			
+			draw_glyphs( &the_font, mvp, g,
+				GLYPH_ARRAY_S*GLYPH_ARRAY_S,
+				&the_glyph_coords[0][0][0],
+				F_DRAW_TRIS | F_ALL_SOLID );
+			
+			glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+			glEnable( GL_DEPTH_TEST );
+		}
+	}
+	else
+	{
+		static GlyphBatch *batches = NULL;
+		
+		#if 0
+		wchar_t s[] = L""
+		"Hello, WOO0RLD !1\n"
+		"åäáàóòöëèé\n"
+		"?#\"!%\n"
+		"0123456789\n.,-_⁰¹²³⁴⁵⁶⁷⁸⁹\n"
+		"purple micro µ shoes\n"
+		"v w m M W V\n"
+		"新年大吉大利\n"
+		"他买了一条裤子，\n"
+		"裤子好极了。\n"
+		"下雪。看电影\n";
+		size_t slen = sizeof( s ) / sizeof( s[0] ) - 1;
+		#else
+		static int has_loaded = 0;
+		static wchar_t *s = NULL;
+		static size_t slen;
+		
+		if ( !has_loaded ) {
+			const char *fn = "data/artofwar.txt";
+			FILE *fp;
+			long filesize;
+			char *buf;
+			fp = fopen( fn, "r" );
+			if ( !fp ) {
+				printf( "Failed to open %s\n", fn );
+				exit(0);
+			}
+			fseek( fp, 0, SEEK_END );
+			filesize = ftell( fp );
+			fseek( fp, 0, SEEK_SET );
+			buf = malloc( filesize );
+			s = malloc( 2*filesize*sizeof(wchar_t) );
+			fread( buf, filesize, 1, fp );
+			slen = mbstowcs( s, buf, 2*filesize );
+			if ( slen == (size_t)(-1) )
+				slen = 0;
+			free( buf );
+			fclose( fp );
+			has_loaded=1;
+			printf( "slen=%u\n", (uint) slen );
+		}
+		#endif
+		
+		if ( !batches ) {
+			batches = do_monospace_layout( &the_font, (uint32*) s, slen, 1, -1 );
+		}
+		
+		draw_glyph_batches( &the_font, batches, mvp, glyph_draw_flags & ~F_DRAW_SQUARE );
+		
+		if ( wire_mode == 1 )
+		{
+			glDisable( GL_DEPTH_TEST );
+			glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
+			draw_glyph_batches( &the_font, batches, mvp, F_DRAW_TRIS | F_ALL_SOLID );
+			glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+			glEnable( GL_DEPTH_TEST );
+		}
+	}
+	
 	end_text();
 	
+	glPointSize( 1 );
 	glDisable( GL_POLYGON_OFFSET_FILL );
 	glDisable( GL_POLYGON_OFFSET_LINE );
 	glDisable( GL_POLYGON_OFFSET_POINT );
+	glDisable( GL_BLEND );
+	glDisable( GL_POLYGON_SMOOTH );
+	glDisable( GL_LINE_SMOOTH );
+	
+	if ( cull_mode != CULL_OFF )
+		glDisable( GL_CULL_FACE );
 }
 
 static void update_viewport( int w, int h )
 {
+	float near = 0.005;
+	float far = 1000.0;
+	
 	glViewport( 0, 0, w, h );
-	mat4_persp( projection, RADIANS( 65.0f ), w / (float) h, 0.01f, 150.0f );
+	mat4_persp( projection, RADIANS( 65.0f ), w / (float) h, near, far );
 }
 
 __attribute__((noreturn))
@@ -274,8 +417,42 @@ static void quit( void )
 	exit(0);
 }
 
+static void parse_args( int argc, char **argv )
+{
+	static char *default_font = "/usr/share/fonts/truetype/droid/DroidSans.ttf";
+	
+	int32 cc;
+	FILE *fp;
+	int n;
+	
+	the_font_filename = default_font;
+	the_char_code = 'a';
+	
+	for( n=1; n<argc; n++ )
+	{
+		fp = fopen( argv[n], "rb" );
+		
+		/* filename */
+		if ( fp ) {
+			printf( "Filename: '%s\n", argv[n] );
+			the_font_filename = argv[n];
+			fclose( fp );
+			continue;
+		}
+		
+		/* a character */
+		cc = argv[n][0];
+		printf( "Char code: '%s'\n", argv[n] );
+		the_char_code = cc;
+		continue;
+		
+		printf( "Unhandled argument: '%s'\n", argv[n] );
+		exit( 0 );
+	}
+}
+
 int main( int argc, char *argv[] )
-{	
+{
 	const Uint32 video_flags = SDL_OPENGL | SDL_RESIZABLE;
 	
 	float cam_x=0, cam_y=-2, cam_z=1.82;
@@ -290,12 +467,10 @@ int main( int argc, char *argv[] )
 	int simulating = 0;
 	int fast_forward = 0;
 	
-	int enable_aa = 0;
-	int aa_samples = 8;
+	int msaa_enabled = 1;
+	int msaa_samples = 8;
 	
-	if ( argc > 1 ) {
-		the_font_filename = argv[1];
-	}
+	parse_args( argc, argv );
 	
 	printf( "** Initializing SDL\n" );
 	if ( SDL_Init( SDL_INIT_VIDEO ) < 0 ) {
@@ -305,9 +480,9 @@ int main( int argc, char *argv[] )
 	
 	SDL_GL_SetAttribute( SDL_GL_DOUBLEBUFFER, 1 );
 	/* SDL_GL_SetAttribute( SDL_GL_SWAP_CONTROL, 0 ); disables vsync */
-	if ( enable_aa ) {
+	if ( msaa_enabled ) {
 		SDL_GL_SetAttribute( SDL_GL_MULTISAMPLEBUFFERS, 1 );
-		SDL_GL_SetAttribute( SDL_GL_MULTISAMPLESAMPLES, aa_samples );
+		SDL_GL_SetAttribute( SDL_GL_MULTISAMPLESAMPLES, msaa_samples );
 	}
 	
 	if ( !SDL_SetVideoMode( win_w, win_h, 0, video_flags ) ) {
@@ -322,7 +497,7 @@ int main( int argc, char *argv[] )
 	
 	printf( "** Setting up OpenGL things\n" );
 	
-	if ( enable_aa )
+	if ( msaa_enabled )
 		glEnable( GL_MULTISAMPLE );
 	
 	prog = load_shader_prog( "data/vert.glsl", "data/frag.glsl" );
@@ -342,10 +517,11 @@ int main( int argc, char *argv[] )
 	num_floor_verts = generate_grid_floor( floor_buffers[0], floor_buffers[1], 81, 81, -40, -40, 40, 40 );
 	
 	glClearDepth( 1.0f );
-	glDepthFunc( GL_LESS );
+	glDepthFunc( GL_LEQUAL );
 	glEnable( GL_DEPTH_TEST );
+	glClearColor( 0, 0, 0, 0 );
 	
-	printf( "Window size: %dx%d\nAntialias: %s\nFloor vertices: %u\n", win_w, win_h, enable_aa ? "on" : "off", (uint) num_floor_verts );
+	printf( "Window size: %dx%d\nAntialias: %s\nFloor vertices: %u\n", win_w, win_h, msaa_enabled ? "on" : "off", (uint) num_floor_verts );
 	
 	printf( "** Reading camera position from %s\n", cam_file );
 	if (( cam_fp = fopen( cam_file, "rb" ) ))
@@ -406,10 +582,10 @@ int main( int argc, char *argv[] )
 							printf( "%.4f %.4f %.4f | %.4f %.4f\n", cam_x, cam_y, cam_z, cam_yaw, cam_pitch );
 							break;
 						case SDLK_n:
-							printf( "Cull mode: %s\n", ( cull_mode = ( cull_mode + 1 ) % 3 ) ? ( cull_mode == 1 ? "back" : "front" ) : "off" );
+							printf( "Cull mode: %s\n", ( cull_mode = ( cull_mode + 1 ) % 3 ) ? ( cull_mode == CULL_CW ? "clockwise" : "counterclockwise" ) : "disabled" );
 							break;
 						case SDLK_m:
-							wire_mode = !wire_mode;
+							wire_mode = ( wire_mode + 1 ) % 3;
 							break;
 						case SDLK_ESCAPE:
 							quit();
@@ -473,6 +649,10 @@ int main( int argc, char *argv[] )
 			
 			if ( SDL_GetModState() & KMOD_LSHIFT )
 				t *= 10;
+			else if ( SDL_GetModState() & KMOD_LCTRL )
+				t *= 0.05;
+			else if ( SDL_GetModState() & KMOD_ALT )
+				t *= 100;
 			
 			if ( keys[SDLK_a] ) tx -= t;
 			if ( keys[SDLK_d] ) tx += t;

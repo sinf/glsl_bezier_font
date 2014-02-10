@@ -41,6 +41,7 @@ void destroy_font( Font *font )
 			free( font->all_glyphs );
 			free( font->all_points );
 			free( font->all_indices );
+			free( font->all_flags );
 		}
 		else
 		{
@@ -54,6 +55,7 @@ void destroy_font( Font *font )
 						if ( g->tris.end_points ) free( g->tris.end_points );
 						if ( g->tris.indices ) free( g->tris.indices );
 						if ( g->tris.points ) free( g->tris.points );
+						if ( g->tris.flags ) free( g->tris.flags );
 					}
 					free( g );
 				}
@@ -75,14 +77,17 @@ void destroy_font( Font *font )
 /* Merges all vertex & index arrays together so that every glyph can be put into the same VBO. Returns 0 if failure, 1 if success */
 int merge_glyph_data( Font *font )
 {
-	size_t const point_size = sizeof( float ) * 2;
-	size_t const index_size = 2;
+	size_t const point_size = sizeof( PointCoord ) * 2;
+	size_t const index_size = sizeof( PointIndex );
+	size_t const flag_size = sizeof( PointFlag );
+	
 	uint32 total_points = 0;
 	uint32 total_indices = 0;
 	uint32 total_glyphs_mem = 0;
-	float *all_points=NULL, *point_p;
-	uint16 *all_indices=NULL, *index_p;
 	uint8 *all_glyphs=NULL, *glyph_p;
+	PointCoord *all_points=NULL, *point_p;
+	PointIndex *all_indices=NULL, *index_p;
+	PointFlag *all_flags=NULL, *flag_p;
 	uint32 n;
 	
 	for( n=0; n<font->num_glyphs; n++ )
@@ -106,7 +111,8 @@ int merge_glyph_data( Font *font )
 	
 	if ( total_points ) {
 		all_points = malloc( point_size * total_points );
-		if ( !all_points )
+		all_flags = malloc( flag_size * total_points );
+		if ( !all_points || !all_flags )
 			goto out_of_mem;
 	}
 	
@@ -125,8 +131,9 @@ int merge_glyph_data( Font *font )
 	point_p = font->all_points = all_points;
 	index_p = font->all_indices = all_indices;
 	glyph_p = font->all_glyphs = all_glyphs;
-	font->all_points_size = total_points * point_size;
-	font->all_indices_size = total_indices * index_size;
+	flag_p = font->all_flags = all_flags;
+	font->total_indices = total_indices;
+	font->total_points = total_points;
 	
 	for( n=0; n<font->num_glyphs; n++ )
 	{
@@ -143,9 +150,13 @@ int merge_glyph_data( Font *font )
 				if ( np )
 				{
 					memcpy( point_p, g->tris.points, np * point_size );
+					memcpy( flag_p, g->tris.flags, np * flag_size );
 					free( g->tris.points );
+					free( g->tris.flags );
 					g->tris.points = point_p;
+					g->tris.flags = flag_p;
 					point_p += np * 2;
+					flag_p += np;
 				}
 				
 				if ( ni )
@@ -174,6 +185,7 @@ int merge_glyph_data( Font *font )
 	
 out_of_mem:
 	if ( all_points ) free( all_points );
+	if ( all_flags ) free( all_flags );
 	if ( all_indices ) free( all_indices );
 	if ( all_glyphs ) free( all_glyphs );
 	return 0;

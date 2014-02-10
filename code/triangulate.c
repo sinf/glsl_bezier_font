@@ -1,9 +1,14 @@
-#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <assert.h>
+#include <math.h>
+#include <GL/glu.h>
+
 #include "types.h"
 #include "font_data.h"
 #include "opentype.h"
 #include "linkedlist.h"
+#include "triangulate.h"
 
 /* The contour triangulation process
 
@@ -33,232 +38,344 @@ Oletukset
 		// muodosta kolmioverkko (leikkaamattomien) ääriviivojen (A.sisä) ja (A.lapset[]) välille
 */
 
-enum {
-	/* memory limits */
-	MAX_CONTOURS = 128, /* max contours per glyph (FreeMono.ttf has 120) */
-	MAX_HOLES = 32, /* max holes per polygon */
-	MAX_POINTS = 512 /* max points per contour (FreeMono.ttf has 480) */
-};
-
 typedef struct {
 	LinkedList points;
-	uint8 depth;
-	uint8 num_holes;
-	uint8 holes[MAX_HOLES]; /* indices of other contours */
+	int clockwise; /* 1 if clockwise, 0 if counter-clockwise */
+	int convex; /* 1 if convex, 0 if concave */
+	int is_hole;
 } Contour;
 
-/* Returns some point that is on the contour or ~0 on failure */
-static uint16 get_on_curve_point( Contour c[1], uint8 flags[] )
+static void subs_vec2( PointCoord c[2], PointCoord const a[2], PointCoord const b[2] )
 {
-	uint16 pt = 0xFFFF;
-	if ( c->points.length > 0 )
-	{
-		LLNodeID cur, start;
-		cur = start = c->points.root;
-		do {
-			if ( flags[ cur ] & PT_ON_CURVE )
-			{
-				pt = cur;
-				break;
-			}
-			cur = LL_NEXT( c->points, cur );
-		} while( cur != start );
-	}
-	return pt;
+	c[0] = a[0] - b[0];
+	c[1] = a[1] - b[1];
 }
 
-static void delta_vec( float out[2], float const a[2], float const b[2] )
+static void interpolate( PointCoord c[2], PointCoord const a[2], PointCoord const b[2], PointCoord t )
 {
-	out[0] = b[0] - a[0];
-	out[1] = b[1] - a[1];
+	float q = 1 - t;
+	c[0] = q * a[0] + t * b[0];
+	c[1] = q * a[1] + t * b[1];
 }
-
-/*
-static void get_midpoint( float c[2], float const a[2], float const b[2] )
-{
-	c[0] = ( a[0] + b[0] ) / 2;
-	c[1] = ( a[1] + b[1] ) / 2;
-}
-*/
 
 /* Returns Z-component of the resulting vector (because X and Y would be zero) */
-static float cross2( float const a[2], float const b[2] ) {
+static PointCoord cross2( PointCoord const a[2], PointCoord const b[2] ) {
 	return a[0] * b[1] - a[1] * b[0];
 }
 
-static int split_consecutive_off_curve_points( Contour *co, float coords[], uint8 point_flags[] )
+static PointCoord ac_cross_ab( PointCoord const a[2], PointCoord const b[2], PointCoord const c[2] )
 {
-	LLNodeID a, b, c, d, start;
-	
+	PointCoord ab[2], ac[2];
+	subs_vec2( ab, b, a );
+	subs_vec2( ac, c, a );
+	return cross2( ac, ab );
+}
+
+static TrError split_consecutive_off_curve_points( Contour *co, PointCoord coords[2*MAX_GLYPH_POINTS], PointFlag flags[MAX_GLYPH_POINTS] )
+{
+	LLNodeID a, start;
 	a = start = co->points.root;
 	
+	if ( start == LL_BAD_INDEX ) {
+		/* contour has no points */
+		return TR_EMPTY_CONTOUR;
+	}
+	
+	if ( co->points.length < 3 ) {
+		return TR_SUCCESS;
+	}
+	
 	do {
-		b = LL_NEXT( co->points, a );
-		c = LL_NEXT( co->points, b );
-		d = LL_NEXT( co->points, c );
+		LLNodeID b = LL_NEXT( co->points, a );
 		
-		if ( ( point_flags[a] & PT_ON_CURVE )
-		&& !( point_flags[b] & PT_ON_CURVE )
-		&& !( point_flags[c] & PT_ON_CURVE )
-		&& ( point_flags[d] & PT_ON_CURVE ) )
+		if ( !( flags[a] & PT_ON_CURVE ) && !( flags[b] & PT_ON_CURVE ) )
 		{
-			/* on-off-off-on
+			PointCoord const *coord_a = coords + 2*a;
+			PointCoord const *coord_b = coords + 2*b;
+			LLNodeID c = add_node( &co->points, b ); /* add a node between a & b */
 			
-			If both off-curve points are on the same side of line AD, then they can be merged
-			Otherwise, a new point must be added
-			*/
-			
-			float *pa = coords + 2*a;
-			float *pb = coords + 2*b;
-			float *pc = coords + 2*c;
-			float *pd = coords + 2*d;
-			
-			float vab[2], vac[2], vad[2];
-			
-			delta_vec( vab, pa, pb );
-			delta_vec( vac, pa, pc );
-			delta_vec( vad, pa, pd );
-			
-			if ( cross2( vad, vab ) * cross2( vad, vac ) > 0 )
-			{
-				/* points B and C are on the same side of line AD. Therefore they can be merged */
-				printf( "%s:%s: todo: merge points\n", __FILE__, __func__ );
+			if ( c == LL_BAD_INDEX ) {
+				/* can't add more points */
+				return TR_POINTS_LIMIT;
 			}
-			else
-			{
-				/* On different sides. A new point is needed.
-				Some fonts don't have even a single case of this point configuration, other fonts have a few */
-				printf( "%s:%s: todo: add a point\n", __FILE__, __func__ );
-			}
-			return 0;
+			
+			assert( c < MAX_GLYPH_POINTS );
+			assert( LL_NEXT( co->points, a ) == c );
+			assert( LL_PREV( co->points, b ) == c );
+			
+			interpolate( coords + 2*c, coord_a, coord_b, 0.5 );
+			flags[c] = PT_ON_CURVE;
 		}
 		
 		a = b;
 	} while( a != start );
 	
-	return 1;
+	return TR_SUCCESS;
 }
 
-static int contour_contains_point( Contour *c, float p[2] )
+static void detect_winding_and_if_convex( Contour con[1], PointCoord const coords[] )
 {
-	/* todo */
-	(void) c;
-	(void) p;
-	return 0;
+	LLNodeID a;
+	float sum = 0;
+	float prev_area = 0;
+	int is_convex = 1;
+	
+	con->clockwise = 0;
+	con->convex = 1;
+	
+	if ( con->points.length < 3 )
+		return;
+	
+	a = con->points.root;
+	do {
+		LLNodeID b, c;
+		PointCoord area;
+		
+		b = LL_NEXT( con->points, a );
+		c = LL_NEXT( con->points, b );
+		area = ac_cross_ab( coords+2*a, coords+2*b, coords+2*c );
+		
+		if ( area * prev_area < 0 ) {
+			/* if the sign of that cross product changes even once then the contour is not convex */
+			is_convex = 0;
+		}
+		
+		sum += area;
+		prev_area = area;
+		a = b;
+	} while( a != con->points.root );
+	
+	con->convex = is_convex;
+	con->clockwise = ( sum > 0 );
 }
 
-int triangulate_contours( GlyphTriangles *gt, uint8 point_flags[], float points[], uint16 end_points[], uint32 num_contours )
+/* This function treats the contour as a polygon (which it is NOT), so it might fail sometimes */
+static int point_in_contour( Contour con[1], PointCoord const p[2], PointCoord const coords[] )
 {
-	LLNode con_node_pools[MAX_CONTOURS][MAX_POINTS];
-	Contour con[MAX_CONTOURS];
-	uint16 start=0, end, c, d, p;
+	LLNodeID node;
+	int inside = 0;
+	
+	if ( con->points.length < 3 )
+		return 0;
+	
+	node = con->points.root;
+	
+	do {
+		LLNodeID next;
+		PointCoord const *a, *b;
+		
+		next = LL_NEXT( con->points, node );
+		a = coords + 2 * node;
+		b = coords + 2 * next;
+		
+		/* There is an intersection if points a and b lie on different sides of the horizontal line y=p[1] */
+		if (( a[1] <= p[1] && b[1] > p[1] ) || ( a[1] > p[1] && b[1] <= p[1] ))
+		{
+			/* division by zero can happen if ( b[1] == a[1] ), but that is handled by the ifs above */
+			inside ^= ( p[1] - a[1] ) * ( b[0] - a[0] ) / ( b[1] - a[1] ) + ( a[0] ) < p[0];
+		}
+		
+		node = next;
+	} while( node != con->points.root );
+	
+	return inside;
+}
+
+typedef struct {
+	PointIndex *ptr; /* index output array */
+	size_t num; /* number of indices */
+} MyGLUCallbackArg;
+
+static void glu_vertex_callback( void *index, MyGLUCallbackArg *p ) {
+	if ( p->num < MAX_GLYPH_TRI_INDICES )
+		p->ptr[ p->num++ ] = (size_t) index;
+}
+
+TrError triangulate_contours(
+	GlyphTriangles gt[1],
+	PointFlag point_flags[MAX_GLYPH_POINTS],
+	PointCoord point_coords[2*MAX_GLYPH_POINTS],
+	uint16 end_points[],
+	uint32 num_contours )
+{
+	size_t num_tris[3] = {0,0,0};
+	PointIndex triangles[3][MAX_GLYPH_TRI_INDICES]; /* triangle indices: 1. convex 2. concave 3. solid */
+	LLNode node_pool[MAX_GLYPH_POINTS];
+	Contour con[MAX_GLYPH_CONTOURS];
+	uint16 start=0, end, c;
+	uint16 num_orig_points;
+	LinkedList dummy;
+	
+	num_orig_points = end_points[ num_contours - 1 ] + 1;
+	
+	gt->num_points_orig = num_orig_points;
+	gt->end_points = end_points;
+	gt->points = point_coords;
+	gt->flags = point_flags;
+	
+	/* all contours share the same "empty" list, which begins after the last original point */
+	init_list( &dummy, node_pool, num_orig_points, MAX_GLYPH_POINTS - 1 );
 	
 	/* Construct a linked list for each contour */
 	for( c=0; c<num_contours; c++ )
 	{
-		end = end_points[c];
-		
-		if ( end > MAX_POINTS )
-			return 0;
-		
-		init_list( &con[c].points, con_node_pools[c], MAX_POINTS );
-		con[c].depth = 0;
-		con[c].num_holes = 0;
-		
-		for( p=start; p<=end; p++ )
-			add_node_x( &con[c].points, p );
-		
-		start = end;
-	}
-	
-	/* 1. Preprocess */
-	for( c=0; c<num_contours; c++ )
-	{
+		TrError err;
 		Contour *c1 = con + c;
 		
-		/* Make sure that there are no 2 consecutive off-curve points anywhere */
-		if ( !split_consecutive_off_curve_points( c1, points, point_flags ) )
-		{
-			/* Invalid geometry */
-			return 0;
-		}
+		end = end_points[c];
 		
-		/* Determine which contour contains which contour */
-		for( d=0; d<num_contours; d++ )
-		{
-			Contour *c2 = con + d;
-			
-			if ( c1== c2 )
-				continue;
-			
-			/*
-			If c1 contains at least 1 point of c2 then c1 must contain all the points of c2.
-			This is because we assume that no contours intersect.
-			*/
-			
-			p = get_on_curve_point( c2, point_flags );
-			
-			if ( p == 0xFFFF ) {
-				/* c2 doesn't contain any on-curve points and is therefore invalid. can not triangulate corrupt shit */
-				return 0;
-			}
-			
-			if ( contour_contains_point( c1, points + 2 * p ) )
-			{
-				if ( c1->num_holes == MAX_HOLES ) {
-					/* too many holes */
-					return 0;
-				} else {
-					c1->holes[ c1->num_holes++ ] = d;
-					c2->depth++;
-				}
-			}
-		}
+		if ( end >= MAX_GLYPH_POINTS )
+			return TR_POINTS_LIMIT;
+		
+		init_list( &c1->points, node_pool, start, end );
+		c1->points.root = start;
+		c1->points.free_root_p = &dummy.free_root;
+		c1->points.length = end - start + 1;
+		c1->is_hole = 0;
+		
+		detect_winding_and_if_convex( c1, point_coords );
+		
+		/* Make sure that there are no multiple consecutive off-curve points anywhere */
+		err = split_consecutive_off_curve_points( c1, point_coords, point_flags );
+		if ( err != TR_SUCCESS )
+			return err;
+		
+		start = end + 1;
 	}
 	
-	/* 2. Triangulate */
+	gt->num_points_total = 0;
 	for( c=0; c<num_contours; c++ )
 	{
-		if ( ( con[c].depth & 1 ) == 0 )
+		/* Compute total number of points */
+		gt->num_points_total += con[c].points.length;
+		
+		/* Determine, which polygons represent holes */
+		if ( con[c].points.length )
 		{
-			/* The contour is an exterior (ulkoreuna)
-			todo:
-				- find the interior polygon of this contour, adding triangles at curves in the process
-			*/
+			PointCoord const *p0 = point_coords + 2 * con[c].points.root;
+			uint16 d;
 			
-			if ( con[c].num_holes )
+			for( d=0; d<num_contours; d++ )
 			{
-				/* A solid blob which contains holes
-				todo:
-					- triangulate a (potentially concave) polygon with (potentially concave) holes in it
-					- test if this contour intersects any of the holes and subdivide the intersections
-					- find the exterior polygons of the holes
-					(access holes via con[c].num_holes and con[c].holes)
-				*/
+				if ( d != c )
+					con[c].is_hole ^= point_in_contour( con+d, p0, point_coords );
 			}
-			else
-			{
-				/* A solid blob
-				todo:
-					triangulate a (potentially concave) polygon
-				*/
-			}
-		}
-		else
-		{
-			/* The contour is an interior (sisäreuna)
-			This case is already handled above */
 		}
 	}
 	
-	gt->num_points_total = gt->num_points_orig = end_points[ num_contours - 1 ] + 1;
-	gt->num_indices_total = 0;
-	gt->num_indices_convex = 0;
-	gt->num_indices_concave = 0;
-	gt->num_indices_solid = 0;
-	gt->end_points = end_points;
-	gt->indices = NULL;
-	gt->points = points;
+	/* Triangulate */
+	if ( 1 )
+	{
+		GLdouble glu_coords[MAX_GLYPH_TRI_INDICES][3];
+		GLUtesselator *handle;
+		MyGLUCallbackArg arg;
+		
+		arg.num = num_tris[2] * 3;
+		arg.ptr = triangles[2];
+		
+		handle = gluNewTess();
+		if ( !handle )
+			return TR_ALLOC_FAIL;
+		
+		/* Registering an edge flag callback prevents GLU from outputting triangle fans and strips
+		(even if all the callback does is to compute the absolute value of it's argument) */
+		
+		gluTessCallback( handle, GLU_TESS_VERTEX_DATA, (_GLUfuncptr) glu_vertex_callback );
+		gluTessCallback( handle, GLU_TESS_EDGE_FLAG, (_GLUfuncptr) abs );
+		gluTessProperty( handle, GLU_TESS_BOUNDARY_ONLY, GL_FALSE );
+		gluTessNormal( handle, 0, 0, 1 );
+		gluTessBeginPolygon( handle, &arg );
+		
+		for( c=0; c<num_contours; c++ )
+		{
+			if ( con[c].points.length >= 3 )
+			{
+				LLNodeID node, next;
+				PointFlag vertex_id_bit = 2;
+				
+				gluTessBeginContour( handle );
+				
+				node = con[c].points.root;
+				do {
+					int must_add = 1;
+					
+					next = LL_NEXT( con[c].points, node );
+					
+					if ( !( point_flags[ node ] & PT_ON_CURVE ) )
+					{
+						/* Off-curve point */
+						LLNodeID prev;
+						int is_clockwise;
+						int is_concave;
+						size_t t;
+						
+						prev = LL_PREV( con[c].points, node );
+						is_clockwise = ac_cross_ab( point_coords + 2 * prev, point_coords + 2 * node, point_coords + 2 * next ) > 0;
+						is_concave = ( is_clockwise != con[c].clockwise ) ^ con[c].is_hole;
+						must_add &= is_concave;
+						t = num_tris[ is_concave ] * 3;
+						
+						if ( t < MAX_GLYPH_TRI_INDICES - 3 )
+						{
+							/* add a triangle */
+							
+							num_tris[ is_concave ] += 1;
+							triangles[ is_concave ][ t ] = node;
+							triangles[ is_concave ][ t + 1 + !is_concave ] = next;
+							triangles[ is_concave ][ t + 1 + is_concave ] = prev;
+							
+							point_flags[ prev ] = vertex_id_bit | PT_ON_CURVE;
+							point_flags[ next ] = ( vertex_id_bit = vertex_id_bit ^ 2 ) | PT_ON_CURVE;
+							/* point_flags[ node ] = 0; should be already zero */
+						}
+					}
+					
+					if ( must_add )
+					{
+						glu_coords[node][0] = point_coords[ 2*node ];
+						glu_coords[node][1] = point_coords[ 2*node+1 ];
+						glu_coords[node][2] = 0;
+						gluTessVertex( handle, glu_coords[node], (void*)(size_t) node );
+					}
+					
+					node = next;
+				} while( node != con[c].points.root );
+				
+				gluTessEndContour( handle );
+			}
+		}
+		
+		gluTessEndPolygon( handle );
+		gluDeleteTess( handle );
+		num_tris[2] = arg.num / 3;
+	}
 	
-	return 1;
+	gt->num_indices_total = 3 * ( num_tris[0] + num_tris[1] + num_tris[2] );
+	gt->num_indices_convex = 3 * num_tris[0];
+	gt->num_indices_concave = 3 * num_tris[1];
+	gt->num_indices_solid = 3 * num_tris[2];
+	gt->indices = NULL;
+	
+	if ( gt->num_indices_total > 0 )
+	{
+		gt->indices = malloc( sizeof( PointIndex ) * gt->num_indices_total );
+		
+		if ( !gt->indices )
+			return TR_ALLOC_FAIL;
+		
+		memcpy(
+			gt->indices,
+			triangles[0],
+			3 * num_tris[0] * sizeof( PointIndex ) );
+		memcpy(
+			gt->indices + 3 * num_tris[0],
+			triangles[1],
+			3 * num_tris[1] * sizeof( PointIndex ) );
+		memcpy(
+			gt->indices + 3 * ( num_tris[0] + num_tris[1] ),
+			triangles[2],
+			3 * num_tris[2] * sizeof( PointIndex ) );
+	}
+	
+	return TR_SUCCESS;
 }

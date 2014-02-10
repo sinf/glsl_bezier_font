@@ -5,15 +5,13 @@
 #include <stdio.h>
 #include "font_file.h"
 #include "opentype.h"
+#include "triangulate.h"
 
 #pragma pack(1)
 
-/* Used by font_file.c, read_simple_glyph(). Implemented in triangulate.c */
-extern int triangulate_contours( GlyphTriangles *gt, uint8 point_flags[], float points[], uint16 end_points[], uint32 num_contours );
-
 enum {
-	/* enable/disable debug messages */
-	DEBUG_DUMP = 1
+	DEBUG_DUMP = 1, /* enable/disable level 1 debug messages */
+	DEBUG_DUMP2 = 0 /* enable/disable level 2 debug messages */
 };
 
 /* todo:
@@ -222,6 +220,7 @@ static SimpleGlyph *read_simple_glyph( FILE *fp, float units_per_em, uint16 num_
 	uint32 x_coords_size;
 	int32 prev_x, prev_y;
 	uint8 *point_flags = NULL;
+	PointFlag *final_flags = NULL;
 	uint16 num_instr;
 	
 	end_points = calloc( num_contours, 2 );
@@ -235,10 +234,16 @@ static SimpleGlyph *read_simple_glyph( FILE *fp, float units_per_em, uint16 num_
 	}
 	
 	num_points = end_points[ num_contours - 1 ] + 1;
-	point_flags = calloc( num_points, 1 );
-	final_points = calloc( num_points, sizeof( float ) * 2 );
+	if ( num_points > MAX_GLYPH_POINTS ) {
+		*status = F_FAIL_BUFFER_LIMIT;
+		goto error_handler;
+	}
 	
-	if ( !point_flags || !final_points ) {
+	point_flags = calloc( MAX_GLYPH_POINTS, 1 );
+	final_flags = calloc( MAX_GLYPH_POINTS, sizeof( PointFlag ) );
+	final_points = calloc( MAX_GLYPH_POINTS, sizeof( PointCoord ) * 2 );
+	
+	if ( !point_flags || !final_points || !final_flags ) {
 		*status = F_FAIL_ALLOC;
 		goto error_handler;
 	}
@@ -318,20 +323,33 @@ static SimpleGlyph *read_simple_glyph( FILE *fp, float units_per_em, uint16 num_
 		if ( (*status = read_contour_coord( fp, &y_data_pos, flags>>1, &prev_y, &new_y )) != F_SUCCESS ) goto error_handler;
 		final_points[2*n+0] = new_x / units_per_em;
 		final_points[2*n+1] = new_y / units_per_em;
+		final_flags[n] = point_flags[n] & PT_ON_CURVE; /* discard all flags except the one that matters */
 	}
 	
 	glyph = calloc( 1, sizeof( SimpleGlyph ) );
 	if ( !glyph ) {
 		*status = F_FAIL_ALLOC;
 	} else {
-		triangulate_contours( &glyph->tris, point_flags, final_points, end_points, num_contours );
-		/* these must not be free'd: */
-		end_points = NULL;
-		final_points = NULL;
+		TrError e = triangulate_contours( &glyph->tris, final_flags, final_points, end_points, num_contours );
+		if ( e != TR_SUCCESS )
+		{
+			if ( DEBUG_DUMP )
+				printf( "Failed to triangulate contours (%u)\n", e );
+			
+			*status = F_FAIL_TRIANGULATE;
+		}
+		else
+		{
+			/* these must not be free'd since they are in use: */
+			end_points = NULL;
+			final_points = NULL;
+			final_flags = NULL;
+		}
 	}
 	
 error_handler:;
 	if ( final_points ) free( final_points );
+	if ( final_flags ) free( final_flags );
 	if ( end_points ) free( end_points );
 	if ( point_flags ) free( point_flags );
 	
@@ -407,6 +425,9 @@ static FontStatus read_all_glyphs( FILE *fp, Font font[1], int16 format, float u
 					continue;
 				}
 				
+				if ( DEBUG_DUMP2 )
+					printf( "Reading glyph %u out of %u\n", (uint) n, (uint) font->num_glyphs );
+				
 				prev_loc = loc;
 				status = read_glyph( fp, font, n, units_per_em, (uint32) loc * 2 + glyph_base_offset, max_contours, glyph_counts );
 				
@@ -435,6 +456,9 @@ static FontStatus read_all_glyphs( FILE *fp, Font font[1], int16 format, float u
 			{
 				if ( loca[n] == prev_loc )
 					continue;
+				
+				if ( DEBUG_DUMP2 )
+					printf( "Reading glyph %u\n", (uint) n );
 				
 				prev_loc = loca[n];
 				status = read_glyph( fp, font, n, units_per_em, ntohl( loca[n] ) + glyph_base_offset, max_contours, glyph_counts );

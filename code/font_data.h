@@ -13,6 +13,11 @@ misc crap
 
 #define UNICODE_MAX 0x10FFFF
 
+/* todo: use these everywhere */
+typedef uint16 PointIndex;
+typedef uint32 PointFlag; /* todo: figure out why uint8 and uint16 don't work */
+typedef float PointCoord;
+
 /* Glyph outline converted to triangles */
 typedef struct {
 	uint16 num_points_total; /* total number of points, including generated points */
@@ -22,8 +27,9 @@ typedef struct {
 	uint16 num_indices_concave;
 	uint16 num_indices_solid;
 	uint16 *end_points; /* straight from TTF */
-	uint16 *indices; /* First come convex, then concave, then solid triangles */
-	float *points; /* First come the points from TTF file in the original order, then additional generated points (2 floats per point) */
+	PointIndex *indices; /* 1. convex curves 2. concave curves 3. solid triangles */
+	PointCoord *points; /* First come the points from TTF file in the original order, then additional generated points (2 floats per point) */
+	PointFlag *flags; /* on-curve flags */
 } GlyphTriangles;
 
 typedef struct {
@@ -59,11 +65,12 @@ typedef struct {
 		uint32 *big;
 	} cmap;
 	void *all_glyphs; /* SimpleGlyphs and composite glyphs */
-	float *all_points;
-	uint16 *all_indices;
-	size_t all_points_size;
-	size_t all_indices_size;
-	uint32 gl_buffers[3]; /* vao, vbo, ibo */
+	PointCoord *all_points;
+	PointIndex *all_indices;
+	PointFlag *all_flags;
+	size_t total_points;
+	size_t total_indices;
+	uint32 gl_buffers[4]; /* vao, vbo, ibo, another vbo */
 	uint32 num_glyphs; /* sizeof of glyphs array */
 } Font;
 

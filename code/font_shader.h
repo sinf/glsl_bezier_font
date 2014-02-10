@@ -24,6 +24,19 @@ Outputs:
 
 */
 
+/* draw flags */
+enum {
+	F_DRAW_SQUARE=1, /* draw unit square (also known as EM square) */
+	F_DRAW_OUTLINE=2, /* draw contour edges as line segments */
+	F_DRAW_POINTS=4, /* draw points */
+	F_DRAW_CONVEX=8, /* draw convex curves (triangles) */
+	F_DRAW_CONCAVE=16, /* draw concave curves (triangles) */
+	F_DRAW_SOLID=32, /* draw solid triangles */
+	F_DEBUG_COLORS=64,
+	F_ALL_SOLID=128, /* draw everything using FILL_SOLID */
+	F_DRAW_TRIS=( F_DRAW_CONVEX | F_DRAW_CONCAVE | F_DRAW_SOLID )
+};
+
 int load_font_shaders( void );
 void unload_font_shaders( void );
 void prepare_font( Font * );
@@ -34,6 +47,6 @@ void end_text( void );
 
 /* None of the arguments must be NULL
 (even though this function passes NULL to itself) */
-void draw_glyphs( Font *font, float global_transform[16], uint32 glyph_index, uint32 num_instances, float positions[] );
+void draw_glyphs( Font *font, float global_transform[16], uint32 glyph_index, uint32 num_instances, float positions[], int flags );
 
 #endif

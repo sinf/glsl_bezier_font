@@ -10,34 +10,6 @@
 #include "linkedlist.h"
 #include "triangulate.h"
 
-/* The contour triangulation process
-
-Oletukset
-- Mikään käyrä ei leikkaa toista käyrää
-
-1. Joka ääriviivalle A
-	Kerää pisteistä linkitetty lista
-	Pätki A:n pisteet niin, ettei off-curve pisteitä ole kahta peräkkäin
-	A.ulko = Etsi A:n pisteistä se ääriviiva B, joka sisältää kaikki A:n pisteet
-	A.sisä = Etsi A:n pisteistä se ääriviiva C, jonka sisällä ei ole yhtään A:n pistettä
-	for each off-curve point in B:
-		kirjoita kupera kolmio
-	for each off-curve point in C:
-		kirjoita kovera kolmio
-	Joka ääriviivalle D:
-		jos D:n 1. piste on C:n sisäpuolella:
-			A.lapset += [D]
-
-2. Joka ääriviivalle A
-	jos A.lapset on tyhjä:
-		muodosta kolmioverkko (A.sisä)
-	else:
-		for B in A.lapset:
-			jos leikkaavat( A.sisä, B.ulko )
-				subdivide A ja B leikkauspisteen kohdalta
-		// muodosta kolmioverkko (leikkaamattomien) ääriviivojen (A.sisä) ja (A.lapset[]) välille
-*/
-
 typedef struct {
 	LinkedList points;
 	int clockwise; /* 1 if clockwise, 0 if counter-clockwise */
@@ -326,7 +298,7 @@ TrError triangulate_contours(
 							
 							point_flags[ prev ] = vertex_id_bit | PT_ON_CURVE;
 							point_flags[ next ] = ( vertex_id_bit = vertex_id_bit ^ 2 ) | PT_ON_CURVE;
-							/* point_flags[ node ] = 0; should be already zero */
+							/* point_flags[ node ] = 0; should already be zero */
 						}
 					}
 					

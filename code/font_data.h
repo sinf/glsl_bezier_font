@@ -2,6 +2,7 @@
 #define _FONT_DATA_H
 #include <stddef.h>
 #include "types.h"
+#include "bintree.h"
 
 /* Font data structure
 function abstraction macros
@@ -50,20 +51,23 @@ typedef struct {
 	/* todo */
 } GlyphMetrics;
 
-#define HAS_BIG_CMAP(font) ((font)->num_glyphs > 0x10000)
 #define IS_SIMPLE_GLYPH(glyph) ((glyph)->num_parts == 0)
 #define COMPOSITE_GLYPH_SIZE(num_parts) (( 4+(num_parts)*(4+6*sizeof(float)) ))
+
+/* Binary tree uses usually only 5% of the memory a flat array would use and isn't restricted to unicode range. Flat array might be faster though */
+#define USE_BINTREE_CMAP 0
+#if USE_BINTREE_CMAP
+	#include "bintree.h"
+	#define set_cmap_entry( font, code, glyph_index ) bintree_set( &(font)->cmap, (code), (glyph_index) )
+	#define get_cmap_entry( font, code ) bintree_get( &(font)->cmap, (code) )
+#else
+	#define set_cmap_entry( font, unicode, glyph_index ) (( (glyph_index) < (font)->num_glyphs ) ? ( (font)->cmap[(unicode) & 0xFFFFF]=(glyph_index), 1 ) : 0 )
+	#define get_cmap_entry( font, unicode ) (( (font)->cmap[(unicode)&0xFFFFF] ))
+#endif
 
 typedef struct {
 	GlyphMetrics *metrics;
 	SimpleGlyph **glyphs; /* Array of pointers to CompositeGlyph and SimpleGlyph */
-	union {
-		/* Array of integers. Maps unicode to glyph index.
-		The array has exactly UNICODE_MAX elements allocated (though most of them are usually zeros/wasted)
-		If num_glyphs > 0x10000, use 'big'. Otherwise, use 'small' */
-		uint16 *small;
-		uint32 *big;
-	} cmap;
 	void *all_glyphs; /* SimpleGlyphs and composite glyphs */
 	PointCoord *all_points;
 	PointIndex *all_indices;
@@ -72,6 +76,11 @@ typedef struct {
 	size_t total_indices;
 	uint32 gl_buffers[4]; /* vao, vbo, ibo, another vbo */
 	uint32 num_glyphs; /* sizeof of glyphs array */
+#if USE_BINTREE_CMAP
+	BinTree cmap;
+#else
+	uint16 cmap[UNICODE_MAX]; /* Maps unicode to glyph index. */
+#endif
 } Font;
 
 /* GLSL font rendering algorithm:
@@ -87,8 +96,11 @@ typedef struct {
 7. Draw
 */
 
+/*
 int set_cmap_entry( Font *font, uint32 unicode, uint32 glyph_index );
 uint32 get_cmap_entry( Font *font, uint32 unicode );
+*/
+
 void destroy_font( Font *font );
 
 /* Merges all vertex & index arrays together so that every glyph can be put into the same VBO

@@ -24,7 +24,7 @@ float get_coverage( float x1, float y1, float x2, float y2 )
 	
 	c = clamp( sqrt( abs(y2) ), x1, x2 );
 	a1 = ( x2 - c ) * h; // palkki oikealla (c:n oikealla puolella). saattaa mennä nollaksi
-	a2 = ( c*c*c - x1*x1*x1 ) * ( 1.0 / 3.0 ); // kaareva osa (c:n vasemmalla puolella)
+	a2 = ( c*c*c - x1*x1*x1 ) / 3.0; // kaareva osa (c:n vasemmalla puolella)
 	a3 = ( c - x1 ) * y1; // a1 ja a2 alapuolella oleva pylväs
 	
 	return ( a1 + a2 - a3 ) / ( w * h );

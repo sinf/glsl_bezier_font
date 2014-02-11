@@ -6,9 +6,8 @@
 /* memory limits */
 enum {
 	MAX_GLYPH_CONTOURS = 128, /* Max contours per glyph (FreeMono.ttf has 120) */
-	MAX_GLYPH_POINTS = 1024, /* Max total per glyph (FreeMono.ttf has up to 480). Includes generated points */
-	MAX_GLYPH_TRI_INDICES = 2048, /* Max triangle indices */
-	MAX_POLYGON_HOLES = 32 /* Max nested contours */
+	MAX_GLYPH_POINTS = 1024, /* Max total per (simple) glyph (FreeMono.ttf has up to 480). Includes generated points */
+	MAX_GLYPH_TRI_INDICES = 2048 /* Max triangle indices */
 };
 
 /* error codes */

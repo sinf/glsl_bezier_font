@@ -566,7 +566,13 @@ static FontStatus read_cmap_format4( FILE *fp, Font font[1], uint32 total_length
 	}
 	
 	if ( DEBUG_DUMP )
+	{
 		printf( "Success (%u/%u indices set, %u/%u segs)\n", n_valid, total_indices, (uint) s, (uint) seg_count );
+		
+		#if USE_BINTREE_CMAP
+		printf( "Binary tree allocated length: %u\n", font->cmap.data_len );
+		#endif
+	}
 	
 	free( whole_table );
 	return F_SUCCESS;
@@ -575,7 +581,6 @@ static FontStatus read_cmap_format4( FILE *fp, Font font[1], uint32 total_length
 FontStatus read_cmap( FILE *fp, Font *font )
 {
 	struct { uint16 version, num_tables; } h;
-	void *cmap;
 	long cmap_header_start = ftell( fp );
 	int has_read_cmap = 0;
 	FontStatus status = F_FAIL_INCOMPLETE;
@@ -586,13 +591,11 @@ FontStatus read_cmap( FILE *fp, Font *font )
 	if ( h.version != 0 )
 		return F_FAIL_UNSUP_VER;
 	
-	if ( HAS_BIG_CMAP( font ) )
-		font->cmap.big = cmap = calloc( UNICODE_MAX, 4 );
-	else
-		font->cmap.small = cmap = calloc( UNICODE_MAX, 2 );
-	
-	if ( !cmap )
-		return F_FAIL_ALLOC;
+#if USE_BINTREE_CMAP
+	memset( &font->cmap, 0, sizeof( font->cmap ) );
+#else
+	memset( font->cmap, 0, sizeof( font->cmap ) );
+#endif
 	
 	while( h.num_tables-- )
 	{
@@ -646,12 +649,6 @@ FontStatus read_cmap( FILE *fp, Font *font )
 		cmap formats:
 			https://developer.apple.com/fonts/ttrefman/rm06/Chap6cmap.html
 		*/
-	}
-	
-	if ( status != F_SUCCESS )
-	{
-		free( cmap );
-		memset( &font->cmap, 0, sizeof( font->cmap ) );
 	}
 	
 	return status;

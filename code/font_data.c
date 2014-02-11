@@ -3,16 +3,24 @@
 #include <string.h>
 #include "font_data.h"
 
+#if 0
+#if USE_BINTREE_CMAP
+int set_cmap_entry( Font *font, uint32 unicode, uint32 glyph_index )
+{
+	return bintree_set( &font->cmap, unicode, glyph_index );
+}
+uint32 get_cmap_entry( Font *font, uint32 unicode )
+{
+	return bintree_get( &font->cmap, unicode );
+}
+#else
 int set_cmap_entry( Font *font, uint32 unicode, uint32 glyph_index )
 {
 	if ( unicode >= UNICODE_MAX )
 		return 0;
 	if ( glyph_index >= font->num_glyphs )
 		return 0;
-	if ( HAS_BIG_CMAP( font ) )
-		font->cmap.big[ unicode ] = glyph_index;
-	else
-		font->cmap.small[ unicode ] = glyph_index;
+	font->cmap[ unicode ] = glyph_index;
 	return 1;
 }
 
@@ -20,11 +28,10 @@ uint32 get_cmap_entry( Font *font, uint32 unicode )
 {
 	if ( unicode >= UNICODE_MAX )
 		return 0; /* bad unicode */
-	if ( HAS_BIG_CMAP( font ) )
-		return font->cmap.big[ unicode ];
-	else
-		return font->cmap.small[ unicode ];
+	return font->cmap[ unicode ];
 }
+#endif
+#endif
 
 void destroy_font( Font *font )
 {
@@ -62,14 +69,6 @@ void destroy_font( Font *font )
 			}
 		}
 		free( font->glyphs );
-	}
-	if ( HAS_BIG_CMAP( font ) ) {
-		if ( font->cmap.big )
-			free( font->cmap.big );
-	}
-	else {
-		if ( font->cmap.small )
-			free( font->cmap.small );
 	}
 	memset( font, 0, sizeof(*font) );
 }

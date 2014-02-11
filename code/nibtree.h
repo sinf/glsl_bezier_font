@@ -1,5 +1,5 @@
-#ifndef _BINARYTREE_H
-#define _BINARYTREE_H
+#ifndef _NIBBLE_TREE_H
+#define _NIBBLE_TREE_H
 #include "types.h"
 
 /* This module implements a 16-tree that maps integers to integers.

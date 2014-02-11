@@ -55,11 +55,11 @@ typedef struct {
 #define COMPOSITE_GLYPH_SIZE(num_parts) (( 4+(num_parts)*(4+6*sizeof(float)) ))
 
 /* Binary tree uses usually only 5% of the memory a flat array would use and isn't restricted to unicode range. Flat array might be faster though */
-#define USE_BINTREE_CMAP 0
+#define USE_BINTREE_CMAP 1
 #if USE_BINTREE_CMAP
 	#include "bintree.h"
-	#define set_cmap_entry( font, code, glyph_index ) bintree_set( &(font)->cmap, (code), (glyph_index) )
-	#define get_cmap_entry( font, code ) bintree_get( &(font)->cmap, (code) )
+	#define set_cmap_entry( font, code, glyph_index ) nibtree_set( &(font)->cmap, (code), (glyph_index) )
+	#define get_cmap_entry( font, code ) nibtree_get( &(font)->cmap, (code) )
 #else
 	#define set_cmap_entry( font, unicode, glyph_index ) (( (glyph_index) < (font)->num_glyphs ) ? ( (font)->cmap[(unicode) & 0xFFFFF]=(glyph_index), 1 ) : 0 )
 	#define get_cmap_entry( font, unicode ) (( (font)->cmap[(unicode)&0xFFFFF] ))
@@ -77,7 +77,7 @@ typedef struct {
 	uint32 gl_buffers[4]; /* vao, vbo, ibo, another vbo */
 	uint32 num_glyphs; /* sizeof of glyphs array */
 #if USE_BINTREE_CMAP
-	BinTree cmap;
+	NibTree cmap;
 #else
 	uint16 cmap[UNICODE_MAX]; /* Maps unicode to glyph index. */
 #endif

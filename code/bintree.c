@@ -2,7 +2,7 @@
 #include <string.h>
 #include "bintree.h"
 
-static int initialize( BinTree tree[1] )
+static int initialize( NibTree tree[1] )
 {
 	uint32 len = 1024;
 	
@@ -19,7 +19,7 @@ static int initialize( BinTree tree[1] )
 	return 1;
 }
 
-static uint32 add_node( BinTree tree[1] )
+static uint32 add_node( NibTree tree[1] )
 {
 	uint32 pos = tree->next_offset;
 	uint32 end = tree->next_offset + 16;
@@ -41,7 +41,7 @@ static uint32 add_node( BinTree tree[1] )
 	return pos;
 }
 
-int bintree_set( BinTree tree[1], uint32 key, uint32 new_value )
+int nibtree_set( NibTree tree[1], uint32 key, uint32 new_value )
 {
 	uint32 *node;
 	uint32 nibble_pos = 28;
@@ -79,7 +79,7 @@ int bintree_set( BinTree tree[1], uint32 key, uint32 new_value )
 	return 1;
 }
 
-uint32 bintree_get( BinTree tree[1], uint32 key )
+uint32 nibtree_get( NibTree tree[1], uint32 key )
 {
 	uint32 *node = tree->data;
 	uint32 nibble_pos = 28;

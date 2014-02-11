@@ -1,6 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
-#include "bintree.h"
+#include "nibtree.h"
 
 static int initialize( NibTree tree[1] )
 {

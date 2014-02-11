@@ -3,36 +3,6 @@
 #include <string.h>
 #include "font_data.h"
 
-#if 0
-#if USE_BINTREE_CMAP
-int set_cmap_entry( Font *font, uint32 unicode, uint32 glyph_index )
-{
-	return bintree_set( &font->cmap, unicode, glyph_index );
-}
-uint32 get_cmap_entry( Font *font, uint32 unicode )
-{
-	return bintree_get( &font->cmap, unicode );
-}
-#else
-int set_cmap_entry( Font *font, uint32 unicode, uint32 glyph_index )
-{
-	if ( unicode >= UNICODE_MAX )
-		return 0;
-	if ( glyph_index >= font->num_glyphs )
-		return 0;
-	font->cmap[ unicode ] = glyph_index;
-	return 1;
-}
-
-uint32 get_cmap_entry( Font *font, uint32 unicode )
-{
-	if ( unicode >= UNICODE_MAX )
-		return 0; /* bad unicode */
-	return font->cmap[ unicode ];
-}
-#endif
-#endif
-
 void destroy_font( Font *font )
 {
 	if ( font->gl_buffers[0] || font->gl_buffers[1] || font->gl_buffers[2] ) {

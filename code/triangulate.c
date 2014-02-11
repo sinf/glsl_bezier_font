@@ -153,6 +153,28 @@ static int point_in_contour( Contour con[1], PointCoord const p[2], PointCoord c
 	return inside;
 }
 
+static int contour_in_contour( Contour in[1], Contour out[2], PointCoord const coords[] )
+{
+	if ( in->points.length > 3 )
+	{
+	#if 1
+		/* The simple, quick solution: test only 1 point */
+		PointCoord const *p0 = coords + 2 * in->points.root;
+		return point_in_contour( out, p0, coords );
+	#else
+		/* Slower but fixes problems with some fonts */
+		LLNodeID node = in->points.root;
+		do {
+			if ( !point_in_contour( out, coords + 2 * node, coords ) )
+				return 0;
+			node = LL_NEXT( in->points, node );
+		} while( node != in->points.root );
+		return 1;
+	#endif
+	}
+	return 0;
+}
+
 typedef struct {
 	PointIndex *ptr; /* index output array */
 	size_t num; /* number of indices */
@@ -218,20 +240,16 @@ TrError triangulate_contours(
 	gt->num_points_total = 0;
 	for( c=0; c<num_contours; c++ )
 	{
+		uint16 d;
+		
 		/* Compute total number of points */
 		gt->num_points_total += con[c].points.length;
 		
 		/* Determine, which polygons represent holes */
-		if ( con[c].points.length )
+		for( d=0; d<num_contours; d++ )
 		{
-			PointCoord const *p0 = point_coords + 2 * con[c].points.root;
-			uint16 d;
-			
-			for( d=0; d<num_contours; d++ )
-			{
-				if ( d != c )
-					con[c].is_hole ^= point_in_contour( con+d, p0, point_coords );
-			}
+			if ( d != c )
+				con[c].is_hole ^= contour_in_contour( con+c, con+d, point_coords );
 		}
 	}
 	
@@ -255,8 +273,15 @@ TrError triangulate_contours(
 		gluTessCallback( handle, GLU_TESS_VERTEX_DATA, (_GLUfuncptr) glu_vertex_callback );
 		gluTessCallback( handle, GLU_TESS_EDGE_FLAG, (_GLUfuncptr) abs );
 		gluTessProperty( handle, GLU_TESS_BOUNDARY_ONLY, GL_FALSE );
+		gluTessProperty( handle, GLU_TESS_WINDING_RULE, GLU_TESS_WINDING_NONZERO );
 		gluTessNormal( handle, 0, 0, 1 );
 		gluTessBeginPolygon( handle, &arg );
+		
+		/*
+		ODD or NONZERO ?
+		GLU_TESS_WINDING_ODD would make self-intersecting polygons behave as expected but breaks some fonts where contours partially overlap.
+		see http://www.glprogramming.com/red/chapter11.html for winding rules and other GLU stuff
+		*/
 		
 		for( c=0; c<num_contours; c++ )
 		{
@@ -266,6 +291,11 @@ TrError triangulate_contours(
 				PointFlag vertex_id_bit = 2;
 				
 				gluTessBeginContour( handle );
+				
+				/*
+				todo:
+				fix this: sometimes start and end points end up with the same vertex ID bit, causing a nearby curve to be rendered incorrectly
+				*/
 				
 				node = con[c].points.root;
 				do {

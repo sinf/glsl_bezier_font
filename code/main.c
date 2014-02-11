@@ -52,6 +52,7 @@ static uint32 the_glyph_index = 0;
 
 enum { GLYPH_ARRAY_S = 128 };
 static float the_glyph_coords[GLYPH_ARRAY_S][GLYPH_ARRAY_S][2];
+static GlyphBatch *my_layout = NULL;
 
 static int lookup_test_char( Font *font, int32 cc )
 {
@@ -96,6 +97,41 @@ static int lookup_test_char( Font *font, int32 cc )
 		printf( "- no glyph found\n" );
 		return 0;
 	}
+}
+
+static GlyphBatch *load_text_file( Font *font, const char *filename )
+{
+	GlyphBatch *layout = NULL;
+	FILE *fp;
+	uint32 *text;
+	long len;
+	
+	printf( "Loading text file %s\n", filename );
+	fp = fopen( filename, "rb" );
+	
+	if ( !fp ) {
+		printf( "Failed to open file\n" );
+		return NULL;
+	}
+	
+	if ( !fseek( fp, 0, SEEK_END )
+	&& ( len = ftell( fp ) ) > 0
+	&& !fseek( fp, 0, SEEK_SET ) ) {
+		/* Length of the file has been succesfully determined and the file is not empty. */
+		len &= ~0x3;
+		text = malloc( len );
+		if ( text ) {
+			/* There was enough system memory available to hold the contents of the file. Yippee! */
+			if ( fread( text, len, 1, fp ) == 1 ) {
+				layout = do_monospace_layout( font, text, len, 1, -1 );
+			}
+			free( text );
+		}
+	}
+	
+	fclose( fp );
+	printf( layout ? "Success!\n" : "Failure\n" );
+	return layout;
 }
 
 static int load_resources( void )
@@ -151,6 +187,8 @@ static int load_resources( void )
 		get_cmap_entry( &the_font, 'B' ),
 		get_cmap_entry( &the_font, 'j' ),
 		get_cmap_entry( &the_font, 0xe5 ) );
+	
+	my_layout = load_text_file( &the_font, "data/artofwar.txt" );
 	
 	#if 0
 	printf( "Done\n" );
@@ -303,65 +341,17 @@ static void repaint( void )
 			glEnable( GL_DEPTH_TEST );
 		}
 	}
-	else
+	else if ( my_layout )
 	{
-		static GlyphBatch *batches = NULL;
+		/* Show a text file */
 		
-		#if 0
-		wchar_t s[] = L""
-		"Hello, WOO0RLD !1\n"
-		"åäáàóòöëèé\n"
-		"?#\"!%\n"
-		"0123456789\n.,-_⁰¹²³⁴⁵⁶⁷⁸⁹\n"
-		"purple micro µ shoes\n"
-		"v w m M W V\n"
-		"新年大吉大利\n"
-		"他买了一条裤子，\n"
-		"裤子好极了。\n"
-		"下雪。看电影\n";
-		size_t slen = sizeof( s ) / sizeof( s[0] ) - 1;
-		#else
-		static int has_loaded = 0;
-		static wchar_t *s = NULL;
-		static size_t slen;
-		
-		if ( !has_loaded ) {
-			const char *fn = "data/artofwar.txt";
-			FILE *fp;
-			long filesize;
-			char *buf;
-			fp = fopen( fn, "r" );
-			if ( !fp ) {
-				printf( "Failed to open %s\n", fn );
-				exit(0);
-			}
-			fseek( fp, 0, SEEK_END );
-			filesize = ftell( fp );
-			fseek( fp, 0, SEEK_SET );
-			buf = malloc( filesize );
-			s = malloc( 2*filesize*sizeof(wchar_t) );
-			fread( buf, filesize, 1, fp );
-			slen = mbstowcs( s, buf, 2*filesize );
-			if ( slen == (size_t)(-1) )
-				slen = 0;
-			free( buf );
-			fclose( fp );
-			has_loaded=1;
-			printf( "slen=%u\n", (uint) slen );
-		}
-		#endif
-		
-		if ( !batches ) {
-			batches = do_monospace_layout( &the_font, (uint32*) s, slen, 1, -1 );
-		}
-		
-		draw_glyph_batches( &the_font, batches, mvp, glyph_draw_flags & ~F_DRAW_SQUARE );
+		draw_glyph_batches( &the_font, my_layout, mvp, glyph_draw_flags & ~F_DRAW_SQUARE );
 		
 		if ( wire_mode == 1 )
 		{
 			glDisable( GL_DEPTH_TEST );
 			glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
-			draw_glyph_batches( &the_font, batches, mvp, F_DRAW_TRIS | F_ALL_SOLID );
+			draw_glyph_batches( &the_font, my_layout, mvp, F_DRAW_TRIS | F_ALL_SOLID );
 			glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
 			glEnable( GL_DEPTH_TEST );
 		}

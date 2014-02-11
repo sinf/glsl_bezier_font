@@ -2,17 +2,10 @@
 #define _FONT_DATA_H
 #include <stddef.h>
 #include "types.h"
-#include "bintree.h"
+#include "nibtree.h"
 
-/* Font data structure
-function abstraction macros
-get/set functions/macros
-function pointers
-constants
-misc crap
-*/
-
-#define UNICODE_MAX 0x10FFFF
+#define set_cmap_entry( font, code, glyph_index ) nibtree_set( &(font)->cmap, (code), (glyph_index) )
+#define get_cmap_entry( font, code ) nibtree_get( &(font)->cmap, (code) )
 
 /* todo: use these everywhere */
 typedef uint16 PointIndex;
@@ -54,17 +47,6 @@ typedef struct {
 #define IS_SIMPLE_GLYPH(glyph) ((glyph)->num_parts == 0)
 #define COMPOSITE_GLYPH_SIZE(num_parts) (( 4+(num_parts)*(4+6*sizeof(float)) ))
 
-/* Binary tree uses usually only 5% of the memory a flat array would use and isn't restricted to unicode range. Flat array might be faster though */
-#define USE_BINTREE_CMAP 1
-#if USE_BINTREE_CMAP
-	#include "bintree.h"
-	#define set_cmap_entry( font, code, glyph_index ) nibtree_set( &(font)->cmap, (code), (glyph_index) )
-	#define get_cmap_entry( font, code ) nibtree_get( &(font)->cmap, (code) )
-#else
-	#define set_cmap_entry( font, unicode, glyph_index ) (( (glyph_index) < (font)->num_glyphs ) ? ( (font)->cmap[(unicode) & 0xFFFFF]=(glyph_index), 1 ) : 0 )
-	#define get_cmap_entry( font, unicode ) (( (font)->cmap[(unicode)&0xFFFFF] ))
-#endif
-
 typedef struct {
 	GlyphMetrics *metrics;
 	SimpleGlyph **glyphs; /* Array of pointers to CompositeGlyph and SimpleGlyph */
@@ -76,35 +58,36 @@ typedef struct {
 	size_t total_indices;
 	uint32 gl_buffers[4]; /* vao, vbo, ibo, another vbo */
 	uint32 num_glyphs; /* sizeof of glyphs array */
-#if USE_BINTREE_CMAP
 	NibTree cmap;
-#else
-	uint16 cmap[UNICODE_MAX]; /* Maps unicode to glyph index. */
-#endif
 } Font;
-
-/* GLSL font rendering algorithm:
-1. Read the following from a TTF font file:
-	- Table that maps unicode characters to glyph indices (cmap)
-	- Bezier curves2
-	- Metrics
-2. Triangulate glyphs
-3. Compile & link GLSL program
-4. Layout text (output glyph index/position tuples)
-5. Sort glyphs by indices
-6. Upload uniforms
-7. Draw
-*/
-
-/*
-int set_cmap_entry( Font *font, uint32 unicode, uint32 glyph_index );
-uint32 get_cmap_entry( Font *font, uint32 unicode );
-*/
 
 void destroy_font( Font *font );
 
 /* Merges all vertex & index arrays together so that every glyph can be put into the same VBO
 Returns 0 if failure, 1 if success */
 int merge_glyph_data( Font *font );
+
+/* combined platform and platform specific encoding fields */
+enum {
+	/* Platform 0: Unicode Transformation Format */
+	ENC_UTF_DEFAULT = 0,
+	ENC_UTF_11 = 1,
+	ENC_UTF_ISO10646 = 2,
+	ENC_UTF_20 = 3,
+	
+	/* Platform 1: Macintosh
+	???
+	*/
+	
+	/* Platform 3: Microsoft */
+	ENC_MS_SYMBOL = ( 3 << 16 ),
+	ENC_MS_UCS2 = ( 3 << 16 ) | 1, /* Unicode BMP (UCS-2) */
+	ENC_MS_SHIFTJIS = ( 3 << 16 ) | 2,
+	ENC_MS_PRC = ( 3 << 16 ) | 3,
+	ENC_MS_BIG5 = ( 3 << 16 ) | 4,
+	ENC_MS_WANSUNG = ( 3 << 16 ) | 5,
+	ENC_MS_JOHAB = ( 3 << 16 ) | 6,
+	ENC_MS_UCS4 = ( 3 << 16 ) | 10
+};
 
 #endif

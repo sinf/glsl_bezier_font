@@ -5,16 +5,16 @@
 #include <stdio.h>
 
 typedef struct {
-	uint32 character;
+	uint32 glyph;
 	uint16 column, line;
 } TempChar;
 
 static int sort_func( const void *x, const void *y )
 {
 	TempChar const *a=x, *b=y;
-	if ( a->character > b->character )
+	if ( a->glyph > b->glyph )
 		return -1;
-	if ( a->character < b->character )
+	if ( a->glyph < b->glyph )
 		return 1;
 	return 0;
 }
@@ -25,7 +25,7 @@ GlyphBatch *do_monospace_layout( Font *font, uint32 *text, size_t text_len, floa
 	TempChar *chars=NULL;
 	uint16 col, line;
 	size_t n, num_batches;
-	uint32 prev_char;
+	uint32 prev_glyph;
 	
 	if ( !text_len )
 		return NULL;
@@ -37,7 +37,7 @@ GlyphBatch *do_monospace_layout( Font *font, uint32 *text, size_t text_len, floa
 	col = line = 0;
 	for( n=0; n<text_len; n++ )
 	{
-		chars[n].character = text[n];
+		chars[n].glyph = get_cmap_entry( font, text[n] );
 		chars[n].column = col;
 		chars[n].line = line;
 		
@@ -52,14 +52,20 @@ GlyphBatch *do_monospace_layout( Font *font, uint32 *text, size_t text_len, floa
 	/* Sort text into batches of the same character */
 	qsort( chars, text_len, sizeof(*chars), sort_func );
 	
-	prev_char = num_batches = 0;
+	prev_glyph = num_batches = 0;
 	for( n=0; n<text_len; n++ )
 	{
-		if ( chars[n].character != prev_char ) {
-			prev_char = chars[n].character;
+		if ( chars[n].glyph != prev_glyph ) {
+			prev_glyph = chars[n].glyph;
 			num_batches++;
 		}
 	}
+	
+	/*
+	When different character codes get mapped to the same glyph index (such as the "character not found" glyph) there will be many batches of the same glyph.
+	This causes a big lag problem if the font is missing many glyphs
+	TODO: merge batches with same same glyph index
+	*/
 	
 	printf( "laid out %u batches\n", (uint) num_batches );
 	
@@ -67,21 +73,17 @@ GlyphBatch *do_monospace_layout( Font *font, uint32 *text, size_t text_len, floa
 	if ( !batches )
 		goto memory_error;
 	
-	prev_char = 0;
+	prev_glyph = 0;
 	cur_batch = batches - 1;
 	for( n=0; n<text_len; n++ )
 	{
 		float *p;
 		
-		if ( chars[n].character != prev_char )
+		if ( chars[n].glyph != prev_glyph )
 		{
-			uint32 glyph;
-			
-			prev_char = chars[n].character;
-			glyph = get_cmap_entry( font, prev_char );
-			
+			prev_glyph = chars[n].glyph;
 			cur_batch++;
-			cur_batch->glyph = glyph;
+			cur_batch->glyph = prev_glyph;
 			cur_batch->count = 0;
 			cur_batch->positions = malloc( sizeof(float)*2*text_len );
 			

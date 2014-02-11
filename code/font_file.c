@@ -591,43 +591,35 @@ FontStatus read_cmap( FILE *fp, Font *font )
 	if ( h.version != 0 )
 		return F_FAIL_UNSUP_VER;
 	
-#if USE_BINTREE_CMAP
+	(void) font->cmap.data_len; /* just to make sure font->cmap is still a NibTree */
 	memset( &font->cmap, 0, sizeof( font->cmap ) );
-#else
-	memset( font->cmap, 0, sizeof( font->cmap ) );
-#endif
 	
 	while( h.num_tables-- )
-	{
-		struct {
-			uint16 plat;
-			uint16 enc;
-			uint32 offset;
-		} tabh;
-		
+	{	
+		uint32 temp[2];
 		uint32 subtable_offset;
+		uint32 plat_enc; /* combined platform and specific encoding */
 		long next_tabh_pos;
 		
-		if ( fread( &tabh, 8, 1, fp ) != 1 )
+		if ( fread( temp, 4, 2, fp ) != 2 )
 			return F_FAIL_EOF;
 		
+		plat_enc = ntohl( temp[0] );
+		subtable_offset = cmap_header_start + ntohl( temp[1] );
 		next_tabh_pos = ftell( fp );
-		subtable_offset = cmap_header_start + ntohl( tabh.offset );
 		
 		if ( fseek( fp, subtable_offset, SEEK_SET ) < 0 )
 			return F_FAIL_CORRUPT;
 		else
 		{
-			struct {
-				uint16 format, length;
-			} q;
+			struct { uint16 format, length; } q;
 			
 			if ( read_shorts( fp, &q.format, 2 ) )
 				return F_FAIL_EOF;
 			
 			if ( DEBUG_DUMP ) {
-				printf( "platform=%d | encoding=%d | offset=%08x | format=%d | length=%d\n",
-					ntohs( tabh.plat ), ntohs( tabh.enc ), subtable_offset, q.format, q.length );
+				printf( "platform = %u | encoding = %u | offset=%08x | format=%d | length=%d\n",
+					plat_enc >> 16, plat_enc & 0xFFFF, subtable_offset, q.format, q.length );
 			}
 			
 			/* Most common cmap formats seem to be 4 (the most common of all), 6 and 12

@@ -3,7 +3,7 @@
 #extension GL_ARB_draw_instanced : require
 //#extension GL_ARB_uniform_buffer_object : require
 
-const int BATCH_SIZE = 2024;
+const int BATCH_SIZE = 2024; // was 2024
 const int FILL_CONVEX=0, FILL_CONCAVE=1, FILL_SOLID=2, SHOW_FLAGS=3;
 
 uniform int fill_mode = FILL_SOLID;

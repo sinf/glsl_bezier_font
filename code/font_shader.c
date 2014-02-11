@@ -33,7 +33,7 @@ typedef enum {
 } FillMode;
 
 enum {
-	BATCH_SIZE = 2024,
+	BATCH_SIZE = 2024, /* 1024 for chinese, 2024 for western??? */
 	UBLOCK_BINDING = 1,
 	USE_UBO = 0
 };
@@ -347,9 +347,11 @@ static void draw_composite_glyph( Font *font, void *glyph, uint32 num_instances,
 			send_matrix( m );
 			draw_instances( font, num_instances, subglyph_index, flags );
 		} else {
-			/* composite glyph contains other composite glyphs */
+			/* composite glyph contains other composite glyphs. At least FreeSans.ttf has these */
+			/*
 			printf( "A rare case of a recursive composite glyph has been discovered!\n" );
 			exit(0);
+			*/
 			draw_composite_glyph( font, subglyph, num_instances, m, flags );
 		}
 	}

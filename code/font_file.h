@@ -3,17 +3,14 @@
 #include "font_data.h"
 
 /*
-enum {
-	OK=0,
-	CAN_NOT_OPEN_FILE=1,
-	FILE_IS_EMPTY=2,
-	UNIDENTIFIED_FILE_FORMAT=3,
-	UNEXPECTED_EOF=4,
-	UNSUPPORTED_FEATURE=5,
-	TTC_HAS_NO_FONTS=6,
-	MALFORMED_DATA=7,
-	MALLOC_FAIL=8,
-};
+Microsoft's OpenType specification:
+	http://www.microsoft.com/typography/otspec/default.htm
+
+Old TrueType 1.66 specification in Word format:
+	http://www.microsoft.com/typography/SpecificationsOverview.mspx
+	
+Apple's TrueType Reference Manual:
+	https://developer.apple.com/fonts/ttrefman/index.html
 */
 
 typedef enum {

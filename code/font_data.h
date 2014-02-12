@@ -14,16 +14,17 @@ typedef float PointCoord;
 
 /* Glyph outline converted to triangles */
 typedef struct {
+	PointIndex *indices; /* 1. convex curves 2. concave curves 3. solid triangles */
+	PointCoord *points; /* First come the points from TTF file in the original order, then additional generated points (2 floats per point) */
+	PointFlag *flags; /* on-curve flags */
+	uint16 *end_points; /* straight from TTF */
 	uint16 num_points_total; /* total number of points, including generated points */
 	uint16 num_points_orig; /* number of the original points from TTF file */
 	uint16 num_indices_total;
 	uint16 num_indices_convex;
 	uint16 num_indices_concave;
 	uint16 num_indices_solid;
-	uint16 *end_points; /* straight from TTF */
-	PointIndex *indices; /* 1. convex curves 2. concave curves 3. solid triangles */
-	PointCoord *points; /* First come the points from TTF file in the original order, then additional generated points (2 floats per point) */
-	PointFlag *flags; /* on-curve flags */
+	uint16 num_contours;
 } GlyphTriangles;
 
 typedef struct {

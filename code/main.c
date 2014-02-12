@@ -44,7 +44,8 @@ static Mat4 modelview = {0};
 static Mat4 mvp;
 static GLint mvp_loc;
 
-static char *the_font_filename;
+static char *the_font_filename = "/usr/share/fonts/truetype/droid/DroidSans.ttf";
+static char *the_novel_filename = "data/artofwar.txt";
 static Font the_font;
 
 static int32 the_char_code = 0;
@@ -58,19 +59,11 @@ static int lookup_test_char( Font *font, int32 cc )
 {
 	SimpleGlyph *gh;
 	
-	if ( cc < 0 )
-	{
-		the_char_code = 0;
-		the_glyph_index = -cc;
-	}
-	else
-	{
-		the_char_code = cc;
-		the_glyph_index = get_cmap_entry( font, cc );
-		
-		if ( !the_glyph_index )
-			return 0;
-	}
+	the_char_code = cc;
+	the_glyph_index = get_cmap_entry( font, cc );
+	
+	if ( !the_glyph_index )
+		return 0;
 	
 	gh = font->glyphs[ the_glyph_index ];
 	
@@ -115,22 +108,26 @@ static GlyphBatch *load_text_file( Font *font, const char *filename )
 	}
 	
 	if ( !fseek( fp, 0, SEEK_END )
-	&& ( len = ftell( fp ) ) > 0
+	&& ( len = ftell( fp ) ) >= 4
 	&& !fseek( fp, 0, SEEK_SET ) ) {
 		/* Length of the file has been succesfully determined and the file is not empty. */
-		len &= ~0x3;
-		text = malloc( len );
+		text = malloc( len & ~3 );
+		len >>= 2;
 		if ( text ) {
 			/* There was enough system memory available to hold the contents of the file. Yippee! */
-			if ( fread( text, len, 1, fp ) == 1 ) {
-				layout = do_monospace_layout( font, text, len, 1, -1 );
+			if ( fread( text, 4, len, fp ) == (size_t) len ) {
+				layout = do_monospace_layout( font, text, len, 1, -1, 80 );
+				if ( !layout )
+					printf( "Failed to lay out text\n" );
+				else
+					printf( "Success! Characters in file: %ld\n", len );
 			}
 			free( text );
-		}
+		} else
+			printf( "Failed to allocate memory\n" );
 	}
 	
 	fclose( fp );
-	printf( layout ? "Success!\n" : "Failure\n" );
 	return layout;
 }
 
@@ -141,11 +138,13 @@ static int load_resources( void )
 	create vbos */
 	
 	int status;
+	Uint32 millis;
 	
 	if ( !load_font_shaders() )
 		return 0;
 	
 	printf( "Font: '%s'\n", the_font_filename );
+	millis = SDL_GetTicks();
 	status = load_truetype( &the_font, the_font_filename );
 	
 	if ( status )
@@ -154,49 +153,45 @@ static int load_resources( void )
 		return 0;
 	}
 	
-	if ( !lookup_test_char( &the_font, the_char_code ) )
+	millis = SDL_GetTicks() - millis;
+	printf( "Loading the font file took %u milliseconds\n", (uint) millis );
+	
+	if ( the_char_code )
 	{
-		printf( "Glyph not found\n" );
-		return 0;
-	}
-	else
-	{
-		int x, y;
-		
-		printf(
-			"Number of glyph instances (the grid) = %ux%u = %u\n"
-			"Batches = %u\n",
-			GLYPH_ARRAY_S, GLYPH_ARRAY_S,
-			GLYPH_ARRAY_S*GLYPH_ARRAY_S,
-			(GLYPH_ARRAY_S*GLYPH_ARRAY_S+2023)/2024 );
-		
-		for( y=0; y<GLYPH_ARRAY_S; y++ )
+		if ( !lookup_test_char( &the_font, the_char_code ) )
 		{
-			for( x=0; x<GLYPH_ARRAY_S; x++ )
+			printf( "Glyph for character %u not found\n", (uint) the_char_code );
+			return 0;
+		}
+		else
+		{
+			int x, y;
+			
+			printf(
+				"Number of glyph instances (the grid) = %ux%u = %u\n"
+				"Batches = %u\n",
+				GLYPH_ARRAY_S, GLYPH_ARRAY_S,
+				GLYPH_ARRAY_S*GLYPH_ARRAY_S,
+				(GLYPH_ARRAY_S*GLYPH_ARRAY_S+2023)/2024 );
+			
+			for( y=0; y<GLYPH_ARRAY_S; y++ )
 			{
-				the_glyph_coords[y][x][0] = x - GLYPH_ARRAY_S / 2;
-				the_glyph_coords[y][x][1] = y - GLYPH_ARRAY_S / 2;
+				for( x=0; x<GLYPH_ARRAY_S; x++ )
+				{
+					the_glyph_coords[y][x][0] = x - GLYPH_ARRAY_S / 2;
+					the_glyph_coords[y][x][1] = y - GLYPH_ARRAY_S / 2;
+				}
 			}
 		}
 	}
-	
-	printf( "Glyph indices for characters A, M, P, B, j, \xc3\xa5: %u %u %u %u %u %u\n",
-		get_cmap_entry( &the_font, 'A' ),
-		get_cmap_entry( &the_font, 'M' ),
-		get_cmap_entry( &the_font, 'P' ),
-		get_cmap_entry( &the_font, 'B' ),
-		get_cmap_entry( &the_font, 'j' ),
-		get_cmap_entry( &the_font, 0xe5 ) );
-	
-	my_layout = load_text_file( &the_font, "data/artofwar.txt" );
-	
-	#if 0
-	printf( "Done\n" );
-	exit( 0 );
-	#endif
+	else
+	{
+		my_layout = load_text_file( &the_font, the_novel_filename );
+		if ( !my_layout )
+			return 0;
+	}
 	
 	prepare_font( &the_font );
-	
 	return 1;
 }
 
@@ -273,7 +268,7 @@ static void repaint( void )
 			glyph_draw_flags = F_DRAW_TRIS | F_DEBUG_COLORS;
 			break;
 		case 2:
-			glyph_draw_flags = F_DRAW_POINTS | F_DRAW_OUTLINE | F_DRAW_SQUARE | F_DEBUG_COLORS;
+			glyph_draw_flags = F_DRAW_POINTS | F_DRAW_OUTLINE | F_DRAW_SQUARE | F_DEBUG_COLORS | F_DRAW_SQUARE;
 			break;
 		default:
 			assert(0);
@@ -317,9 +312,9 @@ static void repaint( void )
 	
 	begin_text( &the_font );
 	
-	if ( 0 )
+	if ( the_char_code )
 	{
-		uint32 g = get_cmap_entry( &the_font, L'䥎' );
+		uint32 g = the_glyph_index;
 		
 		/* draw a huge array of the same glyph */
 		draw_glyphs( &the_font, mvp, g,
@@ -345,7 +340,7 @@ static void repaint( void )
 	{
 		/* Show a text file */
 		
-		draw_glyph_batches( &the_font, my_layout, mvp, glyph_draw_flags & ~F_DRAW_SQUARE );
+		draw_glyph_batches( &the_font, my_layout, mvp, glyph_draw_flags );
 		
 		if ( wire_mode == 1 )
 		{
@@ -407,56 +402,52 @@ static void quit( void )
 	exit(0);
 }
 
+static void help_screen_exit( void )
+{
+	printf(
+	"Valid arguments:\n"
+	"-f FILENAME    Load font from given TTF file\n"
+	"-t FILENAME    Load text from given file. The file must be in UTF-32 encoding\n"
+	"-c NUMBER      This character code will be displayed in a grid pattern\n"
+	"-h             Print this information and exit\n"
+	);
+	exit( 0 );
+}
+
 static void parse_args( int argc, char **argv )
 {
-	static char *default_font = "/usr/share/fonts/truetype/droid/DroidSans.ttf";
-	
-	int32 cc;
-	FILE *fp;
+	int end = argc - 1;
 	int n;
 	
-	the_font_filename = default_font;
-	the_char_code = 'a';
+	if ( argc == 2 )
+		help_screen_exit();
 	
-	for( n=1; n<argc; n++ )
+	for( n=1; n<end; n++ )
 	{
-		fp = fopen( argv[n], "rb" );
+		printf( "%s\n", argv[n] );
 		
-		/* filename */
-		if ( fp ) {
-			printf( "Filename: '%s\n", argv[n] );
-			the_font_filename = argv[n];
-			fclose( fp );
-			continue;
-		}
-		
-		/* a character */
-		cc = argv[n][0];
-		printf( "Char code: '%s'\n", argv[n] );
-		the_char_code = cc;
-		continue;
-		
-		printf( "Unhandled argument: '%s'\n", argv[n] );
-		exit( 0 );
+		if ( !strcmp( argv[n], "-f" ) )
+			the_font_filename = argv[++n];
+		else if ( !strcmp( argv[n], "-t" ) )
+			the_novel_filename = argv[++n];
+		else if ( !strcmp( argv[n], "-c" ) )
+			the_char_code = atoi( argv[++n] );
+		else
+			help_screen_exit();
 	}
 }
 
 int main( int argc, char *argv[] )
 {
 	const Uint32 video_flags = SDL_OPENGL | SDL_RESIZABLE;
-	
 	float cam_x=0, cam_y=-2, cam_z=1.82;
-	float cam_yaw=0, cam_pitch=2.2;
-	
+	float cam_yaw=PI, cam_pitch=PI;
 	FILE *cam_fp;
-	
 	int win_w = 800;
 	int win_h = 600;
-	
 	Uint32 prev_ticks;
 	int simulating = 0;
 	int fast_forward = 0;
-	
 	int msaa_enabled = 1;
 	int msaa_samples = 8;
 	

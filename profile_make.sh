@@ -31,7 +31,7 @@ make
 # Now play with the program.
 # Try to access every code path and feature
 # to generate good optimization hints
-./prog
+./prog $*
 mv ./prog ./prog.old
 
 make clean

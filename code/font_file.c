@@ -11,12 +11,11 @@
 
 enum {
 	DEBUG_DUMP = 1, /* enable/disable level 1 debug messages */
-	DEBUG_DUMP2 = 0 /* enable/disable level 2 debug messages */
+	DEBUG_DUMP2 = 0, /* enable/disable level 2 debug messages */
+	ENABLE_OPENMP = 1 /* used for triangulating glyphs. huge speed boost for CJK fonts */
 };
 
 /* todo:
-- fix DroidSerif-Regular.ttf failure
-- triangulate_contours()
 - metrics
 - support more cmap formats
 - proper TTC support
@@ -170,42 +169,30 @@ error_handler:;
 	return NULL;
 }
 
-/* Used by read_simple_glyph() to read point X and Y coordinates */
-static FontStatus read_contour_coord( FILE *fp, long file_pos[1], uint8 flags, int32 prev_co[1], int32 new_co[1] )
+static int read_contour_coord( FILE *fp, PointFlag flags, int32 co[1] )
 {
-	uint8 short_bit, same_bit;
-	
-	if ( fseek( fp, *file_pos, SEEK_SET ) < 0 )
-		return F_FAIL_CORRUPT;
-	
-	short_bit = flags & PT_SHORT_X;
-	same_bit = flags & PT_SAME_X;
-	*new_co = *prev_co;
-	
-	if ( short_bit ) {
-		/* same_bit is now the sign bit; 0x10=positive, 0x00=negative */
+	uint8 is_short = flags & PT_SHORT_X;
+	uint8 is_same = flags & PT_SAME_X;
+	if ( is_short ) {
+		/* is_same is now the sign; 0x10=positive, 0x00=negative */
 		uint8 delta;
 		if ( fread( &delta, 1, 1, fp ) != 1 )
-			return F_FAIL_EOF;
-		if ( same_bit )
-			*new_co += delta;
+			return 0;
+		if ( is_same )
+			*co += delta;
 		else
-			*new_co -= delta;
-		*file_pos += 1;
+			*co -= delta;
 	} else {
 		/* Use the previous coordinate if same_bit is set
 		Otherwise, read a 16-bit delta value */
-		if ( !same_bit ) {
+		if ( !is_same ) {
 			int16 delta;
 			if ( read_shorts( fp, (uint16*) &delta, 1 ) )
-				return F_FAIL_EOF;
-			*new_co += delta;
-			*file_pos += 2;
+				return 0;
+			*co += delta;
 		}
 	}
-	
-	*prev_co = *new_co;
-	return F_SUCCESS;
+	return 1;
 }
 
 /* Used by read_glyph */
@@ -216,12 +203,13 @@ static SimpleGlyph *read_simple_glyph( FILE *fp, float units_per_em, uint16 num_
 	float *final_points = NULL;
 	uint32 num_points;
 	uint32 n;
-	long x_data_pos, y_data_pos;
-	uint32 x_coords_size;
-	int32 prev_x, prev_y;
-	uint8 *point_flags = NULL;
+	int32 prev_coord;
 	PointFlag *final_flags = NULL;
 	uint16 num_instr;
+	
+	if ( DEBUG_DUMP2 ) {
+		printf( "Reading contour data...\n" );
+	}
 	
 	end_points = calloc( num_contours, 2 );
 	if ( !end_points ) {
@@ -239,11 +227,10 @@ static SimpleGlyph *read_simple_glyph( FILE *fp, float units_per_em, uint16 num_
 		goto error_handler;
 	}
 	
-	point_flags = calloc( MAX_GLYPH_POINTS, 1 );
-	final_flags = calloc( MAX_GLYPH_POINTS, sizeof( PointFlag ) );
-	final_points = calloc( MAX_GLYPH_POINTS, sizeof( PointCoord ) * 2 );
+	final_flags = malloc( MAX_GLYPH_POINTS * sizeof( PointFlag ) );
+	final_points = malloc( MAX_GLYPH_POINTS * sizeof( PointCoord ) * 2 );
 	
-	if ( !point_flags || !final_points || !final_flags ) {
+	if ( !final_points || !final_flags ) {
 		*status = F_FAIL_ALLOC;
 		goto error_handler;
 	}
@@ -259,21 +246,16 @@ static SimpleGlyph *read_simple_glyph( FILE *fp, float units_per_em, uint16 num_
 	}
 	
 	/* Determine the size of X coordinate array by scanning the flags */
-	x_coords_size = n = 0;
+	n = 0;
 	while( n < num_points ) 
 	{
-		uint32 x_incr, end, count=1;
+		uint32 end, count=1;
 		uint8 flags;
 		
 		if ( fread( &flags, 1, 1, fp ) != 1 ) {
 			*status = F_FAIL_EOF;
 			goto error_handler;
 		}
-		
-		if ( flags & PT_SHORT_X )
-			x_incr = 1;
-		else
-			x_incr = ( flags & PT_SAME_X ) ? 0 : 2;
 		
 		if ( flags & PT_SAME_FLAGS )
 		{
@@ -285,7 +267,6 @@ static SimpleGlyph *read_simple_glyph( FILE *fp, float units_per_em, uint16 num_
 			count += repeat;
 		}
 		
-		x_coords_size += x_incr * count;
 		end = n + count;
 		
 		if ( end > num_points ) {
@@ -295,7 +276,7 @@ static SimpleGlyph *read_simple_glyph( FILE *fp, float units_per_em, uint16 num_
 		}
 		
 		while( n < end )
-			point_flags[n++] = flags;
+			final_flags[n++] = flags;
 	}
 	
 	if ( n != num_points ) {
@@ -304,59 +285,54 @@ static SimpleGlyph *read_simple_glyph( FILE *fp, float units_per_em, uint16 num_
 		goto error_handler;
 	}
 	
-	x_data_pos = ftell( fp );
-	y_data_pos = x_data_pos + x_coords_size;
-	prev_x = prev_y = 0;
-	
-	if ( x_data_pos < 0 ) {
-		/* ftell failed */
-		*status = F_FAIL_IMPOSSIBLE;
-		goto error_handler;
+	/* Read coordinates. First X, then Y */
+	*status = F_FAIL_EOF;
+	for( prev_coord=n=0; n<num_points; n++ ) {
+		int32 x = prev_coord;
+		if ( !read_contour_coord( fp, final_flags[n], &x ) )
+			goto error_handler;
+		final_points[2*n] = ( prev_coord = x ) / units_per_em;
 	}
-	
-	/* Read the points' coordinates */
-	for( n=0; n<num_points; n++ )
-	{
-		uint8 flags = point_flags[n];
-		int32 new_x, new_y;
-		if ( (*status = read_contour_coord( fp, &x_data_pos, flags, &prev_x, &new_x )) != F_SUCCESS ) goto error_handler;
-		if ( (*status = read_contour_coord( fp, &y_data_pos, flags>>1, &prev_y, &new_y )) != F_SUCCESS ) goto error_handler;
-		final_points[2*n+0] = new_x / units_per_em;
-		final_points[2*n+1] = new_y / units_per_em;
-		final_flags[n] = point_flags[n] & PT_ON_CURVE; /* discard all flags except the one that matters */
+	for( prev_coord=n=0; n<num_points; n++ ) {
+		int32 y = prev_coord;
+		if ( !read_contour_coord( fp, final_flags[n]>>1, &y ) )
+			goto error_handler;
+		final_points[2*n+1] = ( prev_coord = y ) / units_per_em;
+		final_flags[n] &= PT_ON_CURVE; /* discard all flags except the one that matters */
 	}
 	
 	glyph = calloc( 1, sizeof( SimpleGlyph ) );
+	/* calloc sets glyph->num_parts to 0, which very is important because that zero tells the glyph is not a composite glyph */
+	
 	if ( !glyph ) {
 		*status = F_FAIL_ALLOC;
 	} else {
-		TrError e = triangulate_contours( &glyph->tris, final_flags, final_points, end_points, num_contours );
-		if ( e != TR_SUCCESS )
-		{
-			if ( DEBUG_DUMP )
-				printf( "Failed to triangulate contours (%u)\n", e );
-			
-			*status = F_FAIL_TRIANGULATE;
-		}
-		else
-		{
-			/* these must not be free'd since they are in use: */
-			end_points = NULL;
-			final_points = NULL;
-			final_flags = NULL;
-		}
+		glyph->tris.num_points_orig = num_points;
+		glyph->tris.end_points = end_points;
+		glyph->tris.points = final_points;
+		glyph->tris.flags = final_flags;
+		glyph->tris.num_contours = num_contours;
+		
+		/* these three must not be free'd since they are in use: */
+		end_points = NULL;
+		final_points = NULL;
+		final_flags = NULL;
+		
+		if ( DEBUG_DUMP2 )
+			printf( "Glyph read succesfully\n" );
+		
+		*status = F_SUCCESS;
 	}
 	
 error_handler:;
 	if ( final_points ) free( final_points );
 	if ( final_flags ) free( final_flags );
 	if ( end_points ) free( end_points );
-	if ( point_flags ) free( point_flags );
 	
 	return glyph;
 }
 
-static FontStatus read_glyph( FILE *fp, Font font[1], uint32 glyph_index, float units_per_em, uint32 glyph_file_pos, uint16 max_contours, unsigned glyph_counts[2] )
+static FontStatus read_glyph( FILE *fp, Font font[1], uint32 glyph_index, float units_per_em, uint32 glyph_file_pos, unsigned glyph_counts[2] )
 {
 	/* GlyphHeader */
 	struct {
@@ -378,9 +354,6 @@ static FontStatus read_glyph( FILE *fp, Font font[1], uint32 glyph_index, float 
 	}
 	else
 	{
-		if ( header.num_contours > max_contours ) {
-			return F_FAIL_CORRUPT;
-		}
 		font->glyphs[ glyph_index ] = read_simple_glyph( fp, units_per_em, header.num_contours, &status );
 		glyph_counts[0] += ( status == F_SUCCESS );
 	}
@@ -389,7 +362,7 @@ static FontStatus read_glyph( FILE *fp, Font font[1], uint32 glyph_index, float 
 }
 
 /* Reads both 'loca' and 'glyf' tables */
-static FontStatus read_all_glyphs( FILE *fp, Font font[1], int16 format, float units_per_em, uint32 glyph_base_offset, uint16 max_contours )
+static FontStatus read_all_glyphs( FILE *fp, Font font[1], int16 format, float units_per_em, uint32 glyph_base_offset )
 {
 	void *loca_p;
 	uint32 n = 0;
@@ -429,7 +402,7 @@ static FontStatus read_all_glyphs( FILE *fp, Font font[1], int16 format, float u
 					printf( "Reading glyph %u out of %u\n", (uint) n, (uint) font->num_glyphs );
 				
 				prev_loc = loc;
-				status = read_glyph( fp, font, n, units_per_em, (uint32) loc * 2 + glyph_base_offset, max_contours, glyph_counts );
+				status = read_glyph( fp, font, n, units_per_em, (uint32) loc * 2 + glyph_base_offset, glyph_counts );
 				
 				if ( status != F_SUCCESS )
 					break;
@@ -458,10 +431,10 @@ static FontStatus read_all_glyphs( FILE *fp, Font font[1], int16 format, float u
 					continue;
 				
 				if ( DEBUG_DUMP2 )
-					printf( "Reading glyph %u\n", (uint) n );
+					printf( "Reading glyph %u out of %u\n", (uint) n, (uint) font->num_glyphs );
 				
 				prev_loc = loca[n];
-				status = read_glyph( fp, font, n, units_per_em, ntohl( loca[n] ) + glyph_base_offset, max_contours, glyph_counts );
+				status = read_glyph( fp, font, n, units_per_em, ntohl( loca[n] ) + glyph_base_offset, glyph_counts );
 				
 				if ( status != F_SUCCESS )
 					break;
@@ -646,6 +619,72 @@ FontStatus read_cmap( FILE *fp, Font *font )
 	return status;
 }
 
+static TrError triangulate_glyphs( Font font[1], size_t first_glyph, size_t last_glyph )
+{
+	size_t n;
+	TrError err = TR_SUCCESS;
+	void *p = triangulator_begin();
+	
+	if ( !p )
+		return TR_ALLOC_FAIL;
+	
+	if ( DEBUG_DUMP )
+		printf( "Triangulating glyphs [%u ... %u]\n", (uint) first_glyph, (uint) last_glyph );
+	
+	for( n=first_glyph; n<=last_glyph; n++ )
+	{
+		SimpleGlyph *glyph = font->glyphs[n];
+		
+		if ( glyph && IS_SIMPLE_GLYPH( glyph ))
+		{
+			err = triangulate_contours( p, &glyph->tris );
+			if ( err != TR_SUCCESS )
+			{
+				if ( DEBUG_DUMP )
+					printf( "Triangulation failed. Error code = %u\n", (uint) err );
+				return err;
+			}
+		}
+	}
+	
+	triangulator_end( p );
+	return err;
+}
+
+static TrError triangulate_all_glyphs( Font font[1] )
+{
+	if ( !font->num_glyphs )
+		return TR_SUCCESS;
+	
+	if ( font->num_glyphs > 20 && ENABLE_OPENMP )
+	{
+		extern unsigned omp_get_num_procs( void );
+		extern unsigned omp_get_thread_num( void );
+		size_t n, numt = omp_get_num_procs();
+		size_t batch_size = font->num_glyphs / numt;
+			
+		if ( DEBUG_DUMP )
+			printf( "Using %d omp threads\n", (uint) numt );
+		
+		#pragma omp parallel for
+		for( n=0; n<numt; n++ )
+		{
+			size_t start = n * batch_size;
+			size_t end = start + batch_size - 1;
+			
+			if ( omp_get_thread_num() == numt - 1 )
+				end = font->num_glyphs - 1;
+			
+			triangulate_glyphs( font, start, end );
+		}
+		
+		/* errors ignored when using openmp */
+		return TR_SUCCESS;
+	}
+	
+	return triangulate_glyphs( font, 0, font->num_glyphs - 1 );
+}
+
 /* Assumes that the file is positioned after the very first field of Offset Table (sfnt version) */
 static FontStatus read_offset_table( FILE *fp, Font font[1] )
 {
@@ -671,6 +710,7 @@ static FontStatus read_offset_table( FILE *fp, Font font[1] )
 	HeadTable head = {0};
 	MaxProTableOne maxp = {0};
 	int status;
+	TrError tr_status;
 	
 	if ( read_shorts( fp, &num_tables, 1 ) )
 		return F_FAIL_EOF;
@@ -785,9 +825,13 @@ static FontStatus read_offset_table( FILE *fp, Font font[1] )
 		return F_FAIL_CORRUPT;
 	
 	/* Read glyph contours using tables "loca" and "glyf" */
-	status = read_all_glyphs( fp, font, head.index_to_loc_format, ntohs( head.units_per_em ), table_pos[TAB_GLYF], ntohs( maxp.max_contours ) );
+	status = read_all_glyphs( fp, font, head.index_to_loc_format, ntohs( head.units_per_em ), table_pos[TAB_GLYF] );
 	if ( status != F_SUCCESS )
 		return status;
+	
+	tr_status = triangulate_all_glyphs( font );
+	if ( tr_status != TR_SUCCESS )
+		return F_FAIL_TRIANGULATE;
 	
 	/* Merges contour points and indices into a contiguous block of memory */
 	if ( !merge_glyph_data( font ) )

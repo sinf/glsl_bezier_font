@@ -102,13 +102,63 @@ void unload_font_shaders( void )
 	glDeleteProgram( the_prog );
 }
 
+static void add_glyph_stats( Font *font, SimpleGlyph *glyph, size_t counts[4], size_t limits[4] )
+{
+	if ( !glyph )
+		return;
+	if ( IS_SIMPLE_GLYPH( glyph ) ) {
+		counts[0] += glyph->tris.num_points_total;
+		counts[1] += glyph->tris.num_indices_convex;
+		counts[2] += glyph->tris.num_indices_concave;
+		counts[3] += glyph->tris.num_indices_solid;
+		limits[0] = ( glyph->tris.num_points_total > limits[0] ) ? glyph->tris.num_points_total : limits[0];
+		limits[1] = ( glyph->tris.num_indices_convex > limits[1] ) ? glyph->tris.num_indices_convex : limits[1];
+		limits[2] = ( glyph->tris.num_indices_concave > limits[2] ) ? glyph->tris.num_indices_concave : limits[2];
+		limits[3] = ( glyph->tris.num_indices_solid > limits[3] ) ? glyph->tris.num_indices_solid : limits[3];
+	} else {
+		size_t k;
+		for( k=0; k < ( glyph->num_parts ); k++ )
+		{
+			uint32 subglyph_id = *( (uint32*) glyph + 1 + k );
+			add_glyph_stats( font, font->glyphs[subglyph_id], counts, limits );
+		}
+	}
+}
+
+static void get_average_glyph_stats( Font *font, unsigned avg[4], size_t max[4] )
+{
+	size_t n, total[4] = {0,0,0,0};
+	max[0] = max[1] = max[2] = max[3] = 0;
+	for( n=0; n<( font->num_glyphs ); n++ )
+		add_glyph_stats( font, font->glyphs[n], total, max );
+	for( n=0; n<4; n++ )
+		avg[n] = total[n] / font->num_glyphs;
+}
+
 void prepare_font( Font *font )
 {
 	int size_check[ sizeof( GLuint ) == sizeof( font->gl_buffers[0] ) ];
 	GLuint *buf = font->gl_buffers;
+	unsigned stats[4];
+	size_t limits[4];
 	
-	printf( "Uploading font to GL\n" );
 	(void) size_check;
+	
+	get_average_glyph_stats( font, stats, limits );
+	
+	printf(
+	"Uploading font to GL\n"
+	"Average glyph:\n"
+	"	Points: %u\n"
+	"	Indices: %u/%u/%u, total %u\n"
+	"Maximum counts:\n"
+	"    Points: %u\n"
+	"    Indices: %u/%u/%u\n"
+	,
+	stats[0], stats[1], stats[2], stats[3],
+	stats[1]+stats[2]+stats[3],
+	(uint) limits[0], (uint) limits[1], (uint) limits[2], (uint) limits[3]
+	);
 	
 	glGenVertexArrays( 1, buf );
 	glGenBuffers( 3, buf+1 );
@@ -226,16 +276,6 @@ static void draw_instances( Font *font, uint32 num_instances, uint32 glyph_index
 	/* divided by 2 because each point has both X and Y coordinate */
 	first_vertex = ( glyph->tris.points - font->all_points ) / 2;
 	
-	if ( flags & F_DRAW_SQUARE )
-	{
-		if ( flags & F_DEBUG_COLORS )
-			set_color( 2 );
-		set_fill_mode( solid );
-		bind_vertex_array( em_sq_vao );
-		glDrawArraysInstancedARB( GL_LINE_LOOP, 0, 4, num_instances );
-		bind_vertex_array( font->gl_buffers[0] );
-	}
-	
 	if ( flags & F_DRAW_TRIS )
 	{
 		uint16 n_convex, n_concave, n_solid;
@@ -341,6 +381,9 @@ static void draw_composite_glyph( Font *font, void *glyph, uint32 num_instances,
 		float *offset = matrix + 4;
 		float m[16];
 		
+		if ( !subglyph )
+			continue;
+		
 		compute_subglyph_matrix( m, matrix, offset, global_transform );
 		
 		if ( subglyph->num_parts == 0 ) {
@@ -355,6 +398,16 @@ static void draw_composite_glyph( Font *font, void *glyph, uint32 num_instances,
 			draw_composite_glyph( font, subglyph, num_instances, m, flags );
 		}
 	}
+}
+
+static void draw_squares( Font *font, uint32 num_instances, int flags )
+{
+	if ( flags & F_DEBUG_COLORS )
+		set_color( 2 );
+	set_fill_mode( FILL_SOLID );
+	bind_vertex_array( em_sq_vao );
+	glDrawArraysInstancedARB( GL_LINE_LOOP, 0, 4, num_instances );
+	bind_vertex_array( font->gl_buffers[0] );
 }
 
 void draw_glyphs( Font *font, float global_transform[16], uint32 glyph_index, uint32 num_instances, float positions[], int flags )
@@ -403,6 +456,9 @@ void draw_glyphs( Font *font, float global_transform[16], uint32 glyph_index, ui
 			
 			draw_instances( font, count, glyph_index, flags );
 			
+			if ( flags & F_DRAW_SQUARE )
+				draw_squares( font, count, flags );
+			
 			start = end;
 			end += BATCH_SIZE;
 			
@@ -423,6 +479,9 @@ void draw_glyphs( Font *font, float global_transform[16], uint32 glyph_index, ui
 				glUniform2fv( uniforms.glyph_positions, count, positions+2*start );
 			
 			draw_composite_glyph( font, glyph, count, global_transform, flags );
+			
+			if ( flags & F_DRAW_SQUARE )
+				draw_squares( font, count, flags );
 			
 			start = end;
 			end += BATCH_SIZE;

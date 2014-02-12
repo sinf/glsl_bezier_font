@@ -14,8 +14,8 @@ OUTPUT:=prog
 
 WARNINGS=-Wall -Wextra -Werror
 PKG_CONFIG_ITEMS=glew gl glu
-THE_CC_FLAGS:=$(CFLAGS) $(shell pkg-config --cflags $(PKG_CONFIG_ITEMS)) $(shell sdl-config --cflags) $(WARNINGS) -ansi -pedantic
-THE_LINK_FLAGS:=$(LDFLAGS)
+THE_CC_FLAGS:=$(CFLAGS) $(shell pkg-config --cflags $(PKG_CONFIG_ITEMS)) $(shell sdl-config --cflags) $(WARNINGS) -ansi -pedantic -fopenmp
+THE_LINK_FLAGS:=$(LDFLAGS) -fopenmp
 THE_LINK_LIBS:=$(LDLIBS) $(shell pkg-config --libs $(PKG_CONFIG_ITEMS)) $(shell sdl-config --libs) -lm
 
 # This folder is scanned recursively for .c and .h files. No nested directories

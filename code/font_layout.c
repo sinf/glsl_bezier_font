@@ -19,11 +19,11 @@ static int sort_func( const void *x, const void *y )
 	return 0;
 }
 
-GlyphBatch *do_monospace_layout( Font *font, uint32 *text, size_t text_len, float adv_col, float adv_line )
-{	
+GlyphBatch *do_monospace_layout( Font *font, uint32 *text, size_t text_len, float adv_col, float adv_line, uint max_line_len )
+{
 	GlyphBatch *batches=NULL, *cur_batch;
 	TempChar *chars=NULL;
-	uint16 col, line;
+	uint col, line;
 	size_t n, num_batches;
 	uint32 prev_glyph;
 	
@@ -41,7 +41,7 @@ GlyphBatch *do_monospace_layout( Font *font, uint32 *text, size_t text_len, floa
 		chars[n].column = col;
 		chars[n].line = line;
 		
-		if ( text[n] == '\n' ) {
+		if ( text[n] == '\n' || col == max_line_len ) {
 			col = 0;
 			line++;
 		} else {
@@ -117,7 +117,8 @@ memory_error:;
 void draw_glyph_batches( Font *font, GlyphBatch *b, float global_transform[16], int draw_flags )
 {
 	while( b->count ) {
-		draw_glyphs( font, global_transform, b->glyph, b->count, b->positions, draw_flags );
+		if ( b->glyph != 0 )
+			draw_glyphs( font, global_transform, b->glyph, b->count, b->positions, draw_flags );
 		b++;
 	}
 }

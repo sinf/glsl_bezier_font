@@ -223,6 +223,9 @@ static SimpleGlyph *read_simple_glyph( FILE *fp, float units_per_em, uint16 num_
 	
 	num_points = end_points[ num_contours - 1 ] + 1;
 	if ( num_points > MAX_GLYPH_POINTS ) {
+		if ( DEBUG_DUMP ) {
+			printf( "MAX_GLYPH_POINTS too small (need %u)\n", (uint) num_points );
+		}
 		*status = F_FAIL_BUFFER_LIMIT;
 		goto error_handler;
 	}

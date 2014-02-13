@@ -84,6 +84,5 @@ void pop_node( LinkedList list[1], LLNodeID node )
 	list->length -= 1;
 	
 	/* Unlink a node from the "full" list and link_node that node to the "empty" list */
-	link_node( list->pool, list->free_root_p,
-		unlink_node( list->pool, &list->root, node ) );
+	link_node( list->pool, list->free_root_p, unlink_node( list->pool, &list->root, node ) );
 }

@@ -27,7 +27,6 @@ Outputs:
 /* draw flags */
 enum {
 	F_DRAW_SQUARE=1, /* draw unit square (also known as EM square) */
-	F_DRAW_OUTLINE=2, /* draw contour edges as line segments */
 	F_DRAW_POINTS=4, /* draw points */
 	F_DRAW_CONVEX=8, /* draw convex curves (triangles) */
 	F_DRAW_CONCAVE=16, /* draw concave curves (triangles) */

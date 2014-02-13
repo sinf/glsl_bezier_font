@@ -265,10 +265,10 @@ static void repaint( void )
 			glyph_draw_flags = F_DRAW_TRIS;
 			break;
 		case 1:
-			glyph_draw_flags = F_DRAW_TRIS | F_DEBUG_COLORS;
+			glyph_draw_flags = F_DRAW_TRIS | F_DEBUG_COLORS | F_DRAW_POINTS;
 			break;
 		case 2:
-			glyph_draw_flags = F_DRAW_POINTS | F_DRAW_OUTLINE | F_DRAW_SQUARE | F_DEBUG_COLORS | F_DRAW_SQUARE;
+			glyph_draw_flags = F_DRAW_POINTS | F_DEBUG_COLORS | F_DRAW_SQUARE;
 			break;
 		default:
 			assert(0);

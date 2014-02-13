@@ -26,6 +26,7 @@ GlyphBatch *do_monospace_layout( Font *font, uint32 *text, size_t text_len, floa
 	uint col, line;
 	size_t n, num_batches;
 	uint32 prev_glyph;
+	uint32 space_glyph;
 	
 	if ( !text_len )
 		return NULL;
@@ -34,6 +35,7 @@ GlyphBatch *do_monospace_layout( Font *font, uint32 *text, size_t text_len, floa
 	if ( !chars )
 		return NULL;
 	
+	space_glyph = get_cmap_entry( font, ' ' );
 	col = line = 0;
 	for( n=0; n<text_len; n++ )
 	{
@@ -42,6 +44,7 @@ GlyphBatch *do_monospace_layout( Font *font, uint32 *text, size_t text_len, floa
 		chars[n].line = line;
 		
 		if ( text[n] == '\n' || col == max_line_len ) {
+			chars[n].glyph = space_glyph;
 			col = 0;
 			line++;
 		} else {
@@ -77,8 +80,6 @@ GlyphBatch *do_monospace_layout( Font *font, uint32 *text, size_t text_len, floa
 	cur_batch = batches - 1;
 	for( n=0; n<text_len; n++ )
 	{
-		float *p;
-		
 		if ( chars[n].glyph != prev_glyph )
 		{
 			prev_glyph = chars[n].glyph;
@@ -91,9 +92,12 @@ GlyphBatch *do_monospace_layout( Font *font, uint32 *text, size_t text_len, floa
 				goto memory_error;
 		}
 		
-		p = cur_batch->positions + 2 * cur_batch->count++;
-		p[0] = chars[n].column * adv_col;
-		p[1] = chars[n].line * adv_line;
+		if ( cur_batch->positions )
+		{
+			float *p = cur_batch->positions + 2 * cur_batch->count++;
+			p[0] = chars[n].column * adv_col;
+			p[1] = chars[n].line * adv_line;
+		}
 	}
 	
 	batches[num_batches].positions = NULL;
@@ -117,8 +121,7 @@ memory_error:;
 void draw_glyph_batches( Font *font, GlyphBatch *b, float global_transform[16], int draw_flags )
 {
 	while( b->count ) {
-		if ( b->glyph != 0 )
-			draw_glyphs( font, global_transform, b->glyph, b->count, b->positions, draw_flags );
+		draw_glyphs( font, global_transform, b->glyph, b->count, b->positions, draw_flags );
 		b++;
 	}
 }

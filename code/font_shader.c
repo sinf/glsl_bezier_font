@@ -263,8 +263,6 @@ static void draw_instances( Font *font, uint32 num_instances, uint32 glyph_index
 {
 	SimpleGlyph *glyph = font->glyphs[ glyph_index ];
 	GLint first_vertex;
-	uint32 n=0;
-	uint32 start=0, end, count;
 	FillMode solid=FILL_SOLID, convex=FILL_CONVEX, concave=FILL_CONCAVE, show_flags=SHOW_FLAGS;
 	
 	if ( glyph->tris.num_points_total == 0 )
@@ -309,19 +307,6 @@ static void draw_instances( Font *font, uint32 num_instances, uint32 glyph_index
 			set_fill_mode( solid );
 			glDrawElementsInstancedBaseVertex( GL_TRIANGLES, n_solid, index_type, offset+n_convex+n_concave, num_instances, first_vertex );
 		}
-	}
-	
-	if ( flags & F_DRAW_OUTLINE )
-	{
-		/* For each contour... */
-		set_fill_mode( solid );
-		set_color( 0 );
-		do {
-			end = glyph->tris.end_points[n++];
-			count = end - start + 1;
-			glDrawArraysInstancedARB( GL_LINE_LOOP, first_vertex+start, count, num_instances );
-			start = end + 1;
-		} while( start < glyph->tris.num_points_orig );
 	}
 	
 	if ( flags & F_DRAW_POINTS )

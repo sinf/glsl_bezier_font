@@ -57,31 +57,75 @@ static PointCoord ac_cross_ab( PointCoord const a[2], PointCoord const b[2], Poi
 static int any_point_in_triangle( PointCoord const coords[], size_t num_points, PointCoord const a[2], PointCoord const b[2], PointCoord const c[2] )
 {
 	PointCoord ab[2], bc[2], ca[2];
+	PointCoord q[3], w[3];
 	size_t n;
+	PointCoord const *temp;
 	
+	/* Sort a,b,c by y coordinate such that a[1] <= b[1] <= c[1] */
+	if ( a[1] > b[1] ) {
+		temp = b;
+		b = a;
+		a = temp;
+	}
+	if ( a[1] > c[1] ) {
+		temp = c;
+		c = b;
+		b = a;
+		a = temp;
+	}
+	if ( b[1] > c[1] ) {
+		temp = c;
+		c = b;
+		b = temp;
+	}
+	
+	assert( a[1] <= b[1] );
+	assert( a[1] <= c[1] );
+	assert( b[1] <= c[1] );
+	
+	/* Precompute stuff */
 	subs_vec2( ab, b, a );
 	subs_vec2( bc, c, b );
 	subs_vec2( ca, a, c );
+	q[0] = ab[0] / ab[1];
+	w[0] = a[0] - ab[0] * a[1] / ab[1];
+	q[1] = bc[0] / bc[1];
+	w[1] = b[0] - bc[0] * b[1] / bc[1];
+	q[2] = ca[0] / ca[1];
+	w[2] = c[0] - ca[0] * c[1] / ca[1];
+	
+	/* If ab[1] == 0, then a[1]==b[1]
+	And because must be p[1] > a[1] for the collision test to happen, NaNs from q[0] and w[0] won't be even touched
+	Same goes for q[1] and w[1]
+	*/
+	
+	if ( ca[1] == 0 ) {
+		/* All points lie on an line parallel to x axis, thus all effort would be futile */
+		return 0;
+	}
 	
 	for( n=0; n<num_points; n++ )
 	{
-		PointCoord ap[2], bp[2], cp[2];
-		PointCoord const *p = coords + 2*n;
-		int s, t, u;
+		PointCoord const *p = coords + 2 * n;
+		int hits;
 		
-		if ( p == a || p == b || p == c )
-			continue;
-		
-		subs_vec2( ap, p, a );
-		subs_vec2( bp, p, b );
-		subs_vec2( cp, p, c );
-		
-		s = cross2( ab, ap ) > 0;
-		t = cross2( bc, bp ) > 0;
-		u = cross2( ca, cp ) > 0;
-		
-		if ( s == t && s == u )
-			return 1;
+		if ( p[1] > a[1] && p[1] < c[1] )
+		{
+			hits = ( p[1] * q[2] + w[2] > p[0] );
+			
+			if ( p[1] < b[1] )
+				hits += ( p[1] * q[0] + w[0] > p[0] );
+			else
+				hits += ( p[1] * q[1] + w[1] > p[0] );
+			
+			if ( hits == 1 )
+			{
+				/* p != a because p[1] > a[1]
+				and p != c because p[1] < c[1] */
+				if ( p != b )
+					return 1;
+			}
+		}
 	}
 	
 	return 0;
@@ -420,19 +464,34 @@ TrError triangulate_contours( void *glu_tess_handle, GlyphTriangles gt[1] )
 		Contour *c1 = con + c;
 		uint16 d;
 		uint16 d_start, d_end;
+		uint16 count;
+		TrError err;
 		
 		end = end_points[c];
 		if ( end >= MAX_GLYPH_POINTS )
 			return TR_POINTS_LIMIT;
 		
+		count = end - start + 1;
+		
 		init_list( &c1->points, node_pool, start, end );
 		c1->points.root = start;
 		c1->points.free_root_p = &new_points_list.free_root;
-		c1->points.length = end - start + 1;
+		c1->points.length = count;
 		c1->is_hole = 0;
+		c1->clockwise = 0;
 		
 		/* Detect vertex winding */
 		c1->clockwise = get_signed_polygon_area( point_coords + 2 * start, end - start + 1 ) < 0;
+		
+		/* Make sure that there are no multiple consecutive off-curve points anywhere
+		(new points may be added) */
+		err = split_consecutive_off_curve_points( con+c, point_coords, point_flags );
+		if ( err != TR_SUCCESS )
+			return err;
+		
+		/* This function fixes nasty geometry
+		(points may be moved, deleted or added) */
+		merge_extra_verts( con+c, point_coords, point_flags, gt->num_points_orig );
 		
 		/* Determine, whether c1 is an exterior outline or an interior one */
 		d_start = 0;
@@ -458,31 +517,6 @@ TrError triangulate_contours( void *glu_tess_handle, GlyphTriangles gt[1] )
 		}
 		
 		start = end + 1;
-	}
-	
-	/*
-	From now on points may be added, removed or modified.
-	Functions such as point_in_polygon and get_signed_polygon_area shouldn't be used anymore
-	because contours' point lists are no longer guaranteed to be laid out continuously in memory
-	*/
-	
-	for( c=0; c<num_contours; c++ )
-	{
-		TrError err;
-		
-		if ( con[c].points.length < 3 ) {
-			/* invalid contour */
-			continue;
-		}
-		
-		/* Make sure that there are no multiple consecutive off-curve points anywhere */
-		err = split_consecutive_off_curve_points( con+c, point_coords, point_flags );
-		if ( err != TR_SUCCESS )
-			return err;
-	}
-	
-	for( c=0; c<num_contours; c++ ) {
-		merge_extra_verts( con+c, point_coords, point_flags, gt->num_points_orig );
 	}
 	
 	convex_tris = malloc( MAX_GLYPH_TRI_INDICES * sizeof( convex_tris[0] ) );

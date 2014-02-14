@@ -35,11 +35,13 @@ typedef struct {
 	int16 glyph_data_format; /* 0 */
 } HeadTable;
 
+/* Maximum Profile (maxp) table version 0.5 */
 typedef struct {
 	uint32 version; /* 0x5000 */
 	uint16 num_glyphs;
 } MaxProTable;
 
+/* Maximum Profile (maxp) table version 1.0 */
 typedef struct {
 	uint32 version; /* 0x10000 */
 	uint16 num_glyphs;
@@ -57,6 +59,23 @@ typedef struct {
 	uint16 max_com_elems;
 	uint16 max_com_recursion;
 } MaxProTableOne;
+
+typedef struct {
+	uint32 version; /* 0x10000 */
+	int16 ascender;
+	int16 descender;
+	int16 linegap;
+	uint16 adv_width_max;
+	int16 min_lsb;
+	int16 min_rsb;
+	int16 max_x_extent;
+	int16 caret_slope_rise;
+	int16 caret_slope_run;
+	int16 caret_offset;
+	int16 junk[4];
+	int16 metric_data_format; /* 0 */
+	uint16 num_hmetrics;
+} HorzHeaderTable;
 
 typedef struct {
 	uint16 flags;

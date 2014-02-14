@@ -116,7 +116,32 @@ static GlyphBatch *load_text_file( Font *font, const char *filename )
 		if ( text ) {
 			/* There was enough system memory available to hold the contents of the file. Yippee! */
 			if ( fread( text, 4, len, fp ) == (size_t) len ) {
-				layout = do_monospace_layout( font, text, len, 1, -1, 80 );
+				
+				uint32 dummy = 0;
+				uint32 *prev_space = &dummy;
+				size_t max_line_len = 80;
+				size_t column = 0;
+				long x;
+				
+				/* Try wrap text at words when possible */
+				for( x=0; x<len; x++ )
+				{
+					column++;
+					
+					if ( text[x] == ' ' )
+						prev_space = text + x;
+					
+					if ( text[x] == '\n' )
+						column = 0;
+					
+					if ( column >= max_line_len && text + x - prev_space < 10 )
+					{
+						*prev_space = '\n';
+						column = 0;
+					}
+				}
+				
+				layout = do_simple_layout( font, text, len, 80, -1 );
 				if ( !layout )
 					printf( "Failed to lay out text\n" );
 				else
@@ -439,7 +464,7 @@ static void parse_args( int argc, char **argv )
 
 int main( int argc, char *argv[] )
 {
-	const Uint32 video_flags = SDL_OPENGL | SDL_RESIZABLE;
+	const Uint32 video_flags = SDL_OPENGL | SDL_RESIZABLE | SDL_NOFRAME;
 	float cam_x=0, cam_y=-2, cam_z=1.82;
 	float cam_yaw=PI, cam_pitch=PI;
 	FILE *cam_fp;

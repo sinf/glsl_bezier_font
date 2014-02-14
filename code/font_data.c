@@ -8,8 +8,6 @@ void destroy_font( Font *font )
 	if ( font->gl_buffers[0] || font->gl_buffers[1] || font->gl_buffers[2] ) {
 		printf( "destroy_font: leaking graphics memory\n" );
 	}
-	if ( font->metrics )
-		free( font->metrics );
 	if ( font->glyphs )
 	{
 		if ( font->all_glyphs )
@@ -40,6 +38,10 @@ void destroy_font( Font *font )
 		}
 		free( font->glyphs );
 	}
+	if ( font->metrics_adv_x )
+		free( font->metrics_adv_x );
+	if ( font->metrics_lsb )
+		free( font->metrics_lsb );
 	memset( font, 0, sizeof(*font) );
 }
 

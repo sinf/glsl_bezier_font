@@ -6,7 +6,7 @@
 
 typedef struct {
 	uint32 glyph;
-	uint16 column, line;
+	float x, y;
 } TempChar;
 
 static int sort_func( const void *x, const void *y )
@@ -19,14 +19,16 @@ static int sort_func( const void *x, const void *y )
 	return 0;
 }
 
-GlyphBatch *do_monospace_layout( Font *font, uint32 *text, size_t text_len, float adv_col, float adv_line, uint max_line_len )
+GlyphBatch *do_simple_layout( Font *font, uint32 *text, size_t text_len, size_t max_line_len, float line_height_scale )
 {
 	GlyphBatch *batches=NULL, *cur_batch;
 	TempChar *chars=NULL;
-	uint col, line;
 	size_t n, num_batches;
 	uint32 prev_glyph;
 	uint32 space_glyph;
+	float pos_x, pos_y;
+	float line_height;
+	size_t column;
 	
 	if ( !text_len )
 		return NULL;
@@ -35,21 +37,37 @@ GlyphBatch *do_monospace_layout( Font *font, uint32 *text, size_t text_len, floa
 	if ( !chars )
 		return NULL;
 	
+	line_height = ( font->metrics.ascent - font->metrics.descent + font->metrics.linegap ) * line_height_scale;
 	space_glyph = get_cmap_entry( font, ' ' );
-	col = line = 0;
+	pos_x = pos_y = 0;
+	column = 0;
 	for( n=0; n<text_len; n++ )
 	{
-		chars[n].glyph = get_cmap_entry( font, text[n] );
-		chars[n].column = col;
-		chars[n].line = line;
+		uint32 glyph;
+		int newline = 0;
 		
-		if ( text[n] == '\n' || col == max_line_len ) {
-			chars[n].glyph = space_glyph;
-			col = 0;
-			line++;
-		} else {
-			col++;
+		glyph = get_cmap_entry( font, text[n] );
+		
+		chars[n].x = pos_x - font->metrics_lsb[glyph];
+		chars[n].y = pos_y;
+		
+		if ( text[n] == '\n' ) {
+			glyph = space_glyph;
+			newline = 1;
+		} else if ( column == max_line_len ) {
+			newline = 1;
 		}
+		
+		if ( newline ) {
+			column = 0;
+			pos_x = 0;
+			pos_y += line_height;
+		} else {
+			pos_x += font->metrics_adv_x[glyph];
+			column++;
+		}
+		
+		chars[n].glyph = glyph;
 	}
 	
 	/* Sort text into batches of the same character */
@@ -95,8 +113,8 @@ GlyphBatch *do_monospace_layout( Font *font, uint32 *text, size_t text_len, floa
 		if ( cur_batch->positions )
 		{
 			float *p = cur_batch->positions + 2 * cur_batch->count++;
-			p[0] = chars[n].column * adv_col;
-			p[1] = chars[n].line * adv_line;
+			p[0] = chars[n].x;
+			p[1] = chars[n].y;
 		}
 	}
 	

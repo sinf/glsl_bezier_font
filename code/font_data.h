@@ -41,15 +41,15 @@ struct CompositeGlyph {
 */
 
 typedef struct {
-	float advance_x;
-	/* todo */
-} GlyphMetrics;
+	float ascent;
+	float descent;
+	float linegap;
+} GlobalMetrics;
 
 #define IS_SIMPLE_GLYPH(glyph) ((glyph)->num_parts == 0)
 #define COMPOSITE_GLYPH_SIZE(num_parts) (( 4+(num_parts)*(4+6*sizeof(float)) ))
 
 typedef struct {
-	GlyphMetrics *metrics;
 	SimpleGlyph **glyphs; /* Array of pointers to CompositeGlyph and SimpleGlyph */
 	void *all_glyphs; /* SimpleGlyphs and composite glyphs */
 	PointCoord *all_points;
@@ -60,6 +60,9 @@ typedef struct {
 	uint32 gl_buffers[4]; /* vao, vbo, ibo, another vbo */
 	uint32 num_glyphs; /* sizeof of glyphs array */
 	NibTree cmap;
+	GlobalMetrics metrics;
+	float *metrics_adv_x; /* one per glyph */
+	float *metrics_lsb; /* one per glyph */
 } Font;
 
 void destroy_font( Font *font );

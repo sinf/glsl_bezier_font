@@ -688,6 +688,80 @@ static TrError triangulate_all_glyphs( Font font[1] )
 	return triangulate_glyphs( font, 0, font->num_glyphs - 1 );
 }
 
+static FontStatus read_hmtx( FILE *fp, Font font[1], float units_per_em, size_t num_hmetrics )
+{
+	typedef struct {
+		uint16 adv_width;
+		int16 lsb;
+	} LongHorzMetric;
+	
+	LongHorzMetric *metrics = NULL;
+	float *glyph_adv_x = NULL;
+	float *glyph_lsb = NULL;
+	int16 *my_lsb = NULL;
+	size_t n;
+	FontStatus status;
+	
+	if ( font->num_glyphs == 0 )
+		return F_SUCCESS;
+	
+	glyph_adv_x = malloc( font->num_glyphs * sizeof( *glyph_adv_x ) );
+	glyph_lsb = malloc( font->num_glyphs * sizeof( *glyph_lsb ) );
+	metrics = malloc( num_hmetrics * sizeof( *metrics ) );
+	status = F_FAIL_ALLOC;
+	
+	if ( !metrics || !glyph_lsb || !metrics )
+		goto error_handler;
+	
+	status = F_FAIL_EOF;
+	if ( read_shorts( fp, &metrics[0].adv_width, 2 * num_hmetrics ) )
+		goto error_handler;
+	
+	for( n=0; n<num_hmetrics; n++ )
+	{
+		glyph_adv_x[n] = metrics[n].adv_width / units_per_em;
+		glyph_lsb[n] = metrics[n].lsb / units_per_em;
+	}
+	
+	if ( n < font->num_glyphs )
+	{
+		float last_adv_x = glyph_adv_x[ n - 1 ];
+		size_t k=0, num_lsb;
+		
+		num_lsb = font->num_glyphs - num_hmetrics;
+		my_lsb = malloc( num_lsb * 2 );
+		status = F_FAIL_ALLOC;
+		
+		if ( !my_lsb )
+			goto error_handler;
+		
+		status = F_FAIL_EOF;
+		if ( read_shorts( fp, (uint16*) my_lsb, num_lsb ) )
+		{
+			free( my_lsb );
+			goto error_handler;
+		}
+		
+		do {
+			glyph_adv_x[n] = last_adv_x;
+			glyph_lsb[n] = my_lsb[k++] / units_per_em;
+		} while( ++n < font->num_glyphs );
+	}
+	
+	/* Success! */
+	font->metrics_adv_x = glyph_adv_x;
+	font->metrics_lsb = glyph_lsb;
+	glyph_adv_x = glyph_lsb = NULL;
+	status = F_SUCCESS;
+	
+error_handler:;
+	if ( metrics ) free( metrics );
+	if ( glyph_adv_x ) free( glyph_adv_x );
+	if ( glyph_lsb ) free( glyph_lsb );
+	if ( my_lsb ) free( my_lsb );
+	return status;
+}
+
 /* Assumes that the file is positioned after the very first field of Offset Table (sfnt version) */
 static FontStatus read_offset_table( FILE *fp, Font font[1] )
 {
@@ -699,9 +773,9 @@ static FontStatus read_offset_table( FILE *fp, Font font[1] )
 		TAB_LOCA,
 		TAB_GLYF,
 		TAB_CMAP,
-	/*
 		TAB_HHEA,
 		TAB_HMTX,
+	/*
 		TAB_VHEA,
 		TAB_VMTX,
 	*/
@@ -712,6 +786,9 @@ static FontStatus read_offset_table( FILE *fp, Font font[1] )
 	uint16 n, num_tables, num_glyphs;
 	HeadTable head = {0};
 	MaxProTableOne maxp = {0};
+	HorzHeaderTable hhea = {0};
+	float units_per_em;
+	
 	int status;
 	TrError tr_status;
 	
@@ -743,6 +820,8 @@ static FontStatus read_offset_table( FILE *fp, Font font[1] )
 			case 0x6c6f6361: tab_num = TAB_LOCA; break;
 			case 0x676c7966: tab_num = TAB_GLYF; break;
 			case 0x636d6170: tab_num = TAB_CMAP; break;
+			case 0x68686561: tab_num = TAB_HHEA; break;
+			case 0x686d7478: tab_num = TAB_HMTX; break;
 			default:
 				if ( DEBUG_DUMP )
 				{
@@ -789,6 +868,7 @@ static FontStatus read_offset_table( FILE *fp, Font font[1] )
 	}
 	
 	num_glyphs = ntohs( maxp.num_glyphs );
+	units_per_em = ntohs( head.units_per_em );
 	
 	if ( DEBUG_DUMP )
 	{
@@ -798,13 +878,13 @@ static FontStatus read_offset_table( FILE *fp, Font font[1] )
 			"Revision: %08x\n"
 			"Tables: %hu\n"
 			"head / Flags: %08hx\n"
-			"head / Units per EM: %hu\n"
+			"head / Units per EM: %.0f\n"
 			"maxp 0.5 / Glyphs: %hu\n",
 			(uint) ntohl( head.version ),
 			(uint) ntohl( head.font_rev ),
 			(ushort) num_tables,
 			(ushort) ntohs( head.flags ),
-			(ushort) ntohs( head.units_per_em ),
+			units_per_em,
 			(ushort) num_glyphs );
 		if ( maxp.version == htonl( 0x10000 ) )
 		{
@@ -821,14 +901,13 @@ static FontStatus read_offset_table( FILE *fp, Font font[1] )
 	}
 	
 	font->num_glyphs = num_glyphs;
-	if (( ( font->metrics = calloc( num_glyphs, sizeof( font->metrics[0] ) ) ) == NULL )) return F_FAIL_ALLOC;
 	if (( ( font->glyphs = calloc( num_glyphs, sizeof( font->glyphs[0] ) ) ) == NULL )) return F_FAIL_ALLOC;
 	
 	if ( fseek( fp, table_pos[TAB_LOCA], SEEK_SET ) < 0 )
 		return F_FAIL_CORRUPT;
 	
 	/* Read glyph contours using tables "loca" and "glyf" */
-	status = read_all_glyphs( fp, font, head.index_to_loc_format, ntohs( head.units_per_em ), table_pos[TAB_GLYF] );
+	status = read_all_glyphs( fp, font, head.index_to_loc_format, units_per_em, table_pos[TAB_GLYF] );
 	if ( status != F_SUCCESS )
 		return status;
 	
@@ -844,6 +923,43 @@ static FontStatus read_offset_table( FILE *fp, Font font[1] )
 	if ( fseek( fp, table_pos[TAB_CMAP], SEEK_SET ) < 0 )
 		return F_FAIL_CORRUPT;
 	status = read_cmap( fp, font );
+	if ( status != F_SUCCESS )
+		return status;
+	
+	if ( DEBUG_DUMP )
+		printf( "Reading hhea\n" );
+	
+	/* Read horizontal metrics header */
+	if ( fseek( fp, table_pos[TAB_HHEA], SEEK_SET ) < 0 )
+		return F_FAIL_CORRUPT;
+	if ( fread( &hhea, sizeof(hhea), 1, fp ) != 1 )
+		return F_FAIL_EOF;
+	if ( hhea.version != htonl( 0x10000 ) )
+		return F_FAIL_UNSUP_VER;
+	if ( hhea.metric_data_format )
+		return F_FAIL_UNSUP_VER;
+	
+	font->metrics.ascent = (int16) ntohs( hhea.ascender ) / units_per_em;
+	font->metrics.descent = (int16) ntohs( hhea.descender ) / units_per_em;
+	font->metrics.linegap = (int16) ntohs( hhea.linegap ) / units_per_em;
+	
+	if ( DEBUG_DUMP )
+	{
+		printf(
+		"    Ascender: %f\n"
+		"    Descender: %f\n"
+		"    Linegap: %f\n",
+		font->metrics.ascent,
+		font->metrics.descent,
+		font->metrics.linegap );
+		
+		printf( "Reading hmtx\n" );
+	}
+	
+	/* Read horizontal metrics */
+	if ( fseek( fp, table_pos[TAB_HMTX], SEEK_SET ) < 0 )
+		return F_FAIL_CORRUPT;
+	status = read_hmtx( fp, font, units_per_em, ntohs( hhea.num_hmetrics ) );
 	if ( status != F_SUCCESS )
 		return status;
 	

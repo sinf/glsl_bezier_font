@@ -1,6 +1,5 @@
 #ifndef _TRIANGULATE_H
 #define _TRIANGULATE_H
-#include "gpufont_data.h"
 
 /* memory limits */
 enum {
@@ -17,8 +16,10 @@ typedef enum {
 	TR_ALLOC_FAIL /* calloc/malloc failed */
 } TrError;
 
-void *triangulator_begin( void );
-void triangulator_end( void * );
+struct GlyphTriangles;
+struct GLUtesselator;
+extern void gluDeleteTess( struct GLUtesselator * );
+struct GLUtesselator *triangulator_begin( void );
 
 /* Before calling triangulate_contours()
 gt->end_points must not be NULL
@@ -26,6 +27,6 @@ gt->points must be allocated to 2*MAX_GLYPH_POINTS elements
 gt->flags must be allocated to MAX_GLYPH_POINTS elements
 Other fields in gt must also have been initialized
 */
-TrError triangulate_contours( void *glu_tess_handle, GlyphTriangles gt[1] );
+TrError triangulate_contours( struct GLUtesselator *glu_tess_handle, struct GlyphTriangles *gt );
 
 #endif

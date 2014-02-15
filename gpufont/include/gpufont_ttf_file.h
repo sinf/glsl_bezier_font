@@ -1,6 +1,5 @@
 #ifndef _FONT_FILE_H
 #define _FONT_FILE_H
-#include "gpufont_data.h"
 
 /*
 Microsoft's OpenType specification:
@@ -29,7 +28,9 @@ typedef enum {
 	NUM_FONT_STATUS_CODES
 } FontStatus;
 
+struct Font;
+
 /* Returns 0 if success and nonzero if failure */
-FontStatus load_ttf_file( Font font[1], const char filename[] );
+FontStatus load_ttf_file( struct Font *font, const char filename[] );
 
 #endif

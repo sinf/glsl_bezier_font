@@ -1,6 +1,6 @@
 #ifndef _OPENTYPE_DEFS_H
 #define _OPENTYPE_DEFS_H
-#include "gpufont_data.h"
+#include <stdint.h>
 #pragma pack(push)
 #pragma pack(1)
 
@@ -10,8 +10,8 @@ Only used internally by ttf_file.c and triangulate.c
 */
 
 typedef struct {
-	uint32 sfnt_version;
-	uint16
+	uint32_t sfnt_version;
+	uint16_t
 		num_tables,
 		search_range,
 		entry_selector,
@@ -19,67 +19,67 @@ typedef struct {
 } OffsetTable;
 
 typedef struct {
-	int32 version;
-	int32 font_rev;
-	uint32 checksum_adj;
-	uint32 magic; /* 0x5F0F3CF5 */
-	uint16 flags;
-	uint16 units_per_em;
-	uint64 time_created;
-	uint64 time_modified;
-	int16 xmin, ymin, xmax, ymax; /* common bounding box that can encapsulate any glyph */
-	uint16 mac_style; /* bold, italic, etc... */
-	uint16 lowest_good_ppem;
-	int16 font_direction_hint; /* 2 */
-	int16 index_to_loc_format; /* 0=16bit, 1=32bit */
-	int16 glyph_data_format; /* 0 */
+	int32_t version;
+	int32_t font_rev;
+	uint32_t checksum_adj;
+	uint32_t magic; /* 0x5F0F3CF5 */
+	uint16_t flags;
+	uint16_t units_per_em;
+	uint64_t time_created;
+	uint64_t time_modified;
+	int16_t xmin, ymin, xmax, ymax; /* common bounding box that can encapsulate any glyph */
+	uint16_t mac_style; /* bold, italic, etc... */
+	uint16_t lowest_good_ppem;
+	int16_t font_direction_hint; /* 2 */
+	int16_t index_to_loc_format; /* 0=16bit, 1=32bit */
+	int16_t glyph_data_format; /* 0 */
 } HeadTable;
 
 /* Maximum Profile (maxp) table version 0.5 */
 typedef struct {
-	uint32 version; /* 0x5000 */
-	uint16 num_glyphs;
+	uint32_t version; /* 0x5000 */
+	uint16_t num_glyphs;
 } MaxProTable;
 
 /* Maximum Profile (maxp) table version 1.0 */
 typedef struct {
-	uint32 version; /* 0x10000 */
-	uint16 num_glyphs;
-	uint16 max_points;
-	uint16 max_contours;
-	uint16 max_com_points;
-	uint16 max_com_contours;
-	uint16 max_zones;
-	uint16 max_twilight_points;
-	uint16 max_storage;
-	uint16 max_fun_defs;
-	uint16 max_instr_defs;
-	uint16 max_stack_elems;
-	uint16 max_size_of_instr;
-	uint16 max_com_elems;
-	uint16 max_com_recursion;
+	uint32_t version; /* 0x10000 */
+	uint16_t num_glyphs;
+	uint16_t max_points;
+	uint16_t max_contours;
+	uint16_t max_com_points;
+	uint16_t max_com_contours;
+	uint16_t max_zones;
+	uint16_t max_twilight_points;
+	uint16_t max_storage;
+	uint16_t max_fun_defs;
+	uint16_t max_instr_defs;
+	uint16_t max_stack_elems;
+	uint16_t max_size_of_instr;
+	uint16_t max_com_elems;
+	uint16_t max_com_recursion;
 } MaxProTableOne;
 
 typedef struct {
-	uint32 version; /* 0x10000 */
-	int16 ascender;
-	int16 descender;
-	int16 linegap;
-	uint16 adv_width_max;
-	int16 min_lsb;
-	int16 min_rsb;
-	int16 max_x_extent;
-	int16 caret_slope_rise;
-	int16 caret_slope_run;
-	int16 caret_offset;
-	int16 junk[4];
-	int16 metric_data_format; /* 0 */
-	uint16 num_hmetrics;
+	uint32_t version; /* 0x10000 */
+	int16_t ascender;
+	int16_t descender;
+	int16_t linegap;
+	uint16_t adv_width_max;
+	int16_t min_lsb;
+	int16_t min_rsb;
+	int16_t max_x_extent;
+	int16_t caret_slope_rise;
+	int16_t caret_slope_run;
+	int16_t caret_offset;
+	int16_t junk[4];
+	int16_t metric_data_format; /* 0 */
+	uint16_t num_hmetrics;
 } HorzHeaderTable;
 
 typedef struct {
-	uint16 flags;
-	uint16 glyph_index;
+	uint16_t flags;
+	uint16_t glyph_index;
 } SubGlyphHeader;
 
 /* Point flags (used in the glyf table) */

@@ -1,14 +1,15 @@
 #include <stdlib.h>
 #include <assert.h>
+#include "gpufont_data.h"
 #include "gpufont_draw.h"
 #include "gpufont_layout.h"
 
 typedef struct {
-	uint32 glyph;
+	uint32_t glyph;
 	float x, y;
 } TempChar;
 
-static void init_glyph_positions( Font font[1], TempChar chars[], uint32 text[], size_t text_len, size_t max_line_len, float line_height_scale )
+static void init_glyph_positions( Font font[1], TempChar chars[], uint32_t text[], size_t text_len, size_t max_line_len, float line_height_scale )
 {
 	float line_height = ( font->metrics.ascent - font->metrics.descent + font->metrics.linegap ) * line_height_scale;
 	float pos_x=0, pos_y=0;
@@ -16,7 +17,7 @@ static void init_glyph_positions( Font font[1], TempChar chars[], uint32 text[],
 	
 	for( n=0; n<text_len; n++ )
 	{
-		uint32 glyph;
+		uint32_t glyph;
 		float lsb, adv_x;
 		
 		glyph = get_cmap_entry( font, text[n] );
@@ -48,12 +49,12 @@ static int sort_func( const void *x, const void *y )
 	return 0;
 }
 
-GlyphBatch *do_simple_layout( Font *font, uint32 *text, size_t text_len, size_t max_line_len, float line_height_scale )
+GlyphBatch *do_simple_layout( struct Font *font, uint32_t *text, size_t text_len, size_t max_line_len, float line_height_scale )
 {
 	TempChar *chars = NULL;
 	GlyphBatch *output = NULL;
 	size_t n, num_batches, cur_batch, cur_batch_len;
-	uint32 prev_glyph;
+	uint32_t prev_glyph;
 	
 	output = malloc( text_len * sizeof(*output) );
 	if ( !output )
@@ -136,7 +137,7 @@ error_handler:;
 	return NULL;
 }
 
-void draw_glyph_batches( Font *font, GlyphBatch *layout, float global_transform[16], int draw_flags )
+void draw_glyph_batches( struct Font *font, GlyphBatch *layout, float global_transform[16], int draw_flags )
 {
 	float *pos = layout->positions;
 	size_t b, num_batches = layout->batch_count;

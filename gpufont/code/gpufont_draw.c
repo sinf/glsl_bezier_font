@@ -1,8 +1,13 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
 #include "opengl.h"
+#include "gpufont_data.h"
 #include "gpufont_draw.h"
+
+typedef uint32_t uint32;
+typedef uint16_t uint16;
 
 /* todo:
 - Draw the glyphs properly instead of points/lines
@@ -59,9 +64,9 @@ static void prepare_em_sq( void )
 	glBindVertexArray( 0 );
 }
 
-int init_font_shader( uint32 linked_compiled_prog )
+int init_font_shader( GLuint_ linked_compiled_prog )
 {
-	int size_check[ sizeof( linked_compiled_prog ) == sizeof( GLuint ) ];
+	int size_check[ sizeof( GLuint_ ) >= sizeof( GLuint ) ];
 	(void) size_check;
 	
 	/*
@@ -152,7 +157,7 @@ static void get_average_glyph_stats( Font *font, unsigned avg[4], size_t max[4] 
 
 void prepare_font( Font *font )
 {
-	int size_check[ sizeof( GLuint ) == sizeof( font->gl_buffers[0] ) ];
+	int size_check[ sizeof( font->gl_buffers[0] ) >= sizeof( GLuint ) ];
 	GLuint *buf = font->gl_buffers;
 	unsigned stats[4];
 	size_t limits[4];
@@ -172,7 +177,7 @@ void prepare_font( Font *font )
 	,
 	stats[0], stats[1], stats[2], stats[3],
 	stats[1]+stats[2]+stats[3],
-	(uint) limits[0], (uint) limits[1], (uint) limits[2], (uint) limits[3]
+	(unsigned) limits[0], (unsigned) limits[1], (unsigned) limits[2], (unsigned) limits[3]
 	);
 	
 	glGenVertexArrays( 1, buf );
@@ -396,7 +401,7 @@ static void draw_composite_glyph( Font *font, void *glyph, uint32 num_instances,
 }
 #endif
 
-static void draw_squares( Font *font, uint32 num_instances, int flags )
+static void draw_squares( Font *font, size_t num_instances, int flags )
 {
 	if ( flags & F_DEBUG_COLORS )
 		set_color( 2 );
@@ -406,10 +411,10 @@ static void draw_squares( Font *font, uint32 num_instances, int flags )
 	glBindVertexArray( font->gl_buffers[0] );
 }
 
-void draw_glyphs( Font *font, float global_transform[16], uint32 glyph_index, uint32 num_instances, float positions[], int flags )
+void draw_glyphs( struct Font *font, float global_transform[16], unsigned long glyph_index, size_t num_instances, float positions[], int flags )
 {
 	SimpleGlyph *glyph;
-	uint32 start, end, count;
+	size_t start, end, count;
 	GLuint ubo;
 	GLuint ub_index;
 	

@@ -2,6 +2,7 @@
 #include <string.h>
 #include <assert.h>
 #include <math.h>
+#include <stdint.h>
 #include <GL/glu.h>
 
 #include "gpufont_data.h"
@@ -22,6 +23,8 @@ typedef struct {
 	int convex; /* 1 if convex, 0 if concave */
 	int is_hole;
 } Contour;
+
+typedef uint16_t uint16;
 
 #define subs_vec2(c,a,b) { (c)[0]=(a)[0]-(b)[0]; (c)[1]=(a)[1]-(b)[1]; }
 #define interpolate(c,a,b,t) { (c)[0]=(a)[0] * (1-t) + (b)[0] * t; (c)[1]=(a)[1] * (1-t) + (b)[1] * t; }
@@ -386,8 +389,7 @@ static void glu_error_handler( GLenum code )
 }
 #endif
 
-void triangulator_end( void *handle ) { gluDeleteTess( handle ); }
-void *triangulator_begin( void )
+GLUtesselator *triangulator_begin( void )
 {
 	GLUtesselator *handle;
 	
@@ -412,7 +414,7 @@ void *triangulator_begin( void )
 	return handle;
 }
 
-TrError triangulate_contours( void *glu_tess_handle, GlyphTriangles gt[1] )
+TrError triangulate_contours( struct GLUtesselator *handle, struct GlyphTriangles *gt )
 {
 	uint16 num_contours = gt->num_contours;
 	PointFlag *point_flags = gt->flags;
@@ -514,7 +516,6 @@ TrError triangulate_contours( void *glu_tess_handle, GlyphTriangles gt[1] )
 		GLdouble glu_coords[MAX_GLYPH_TRI_INDICES+1][2] = {{0,0}};
 		
 		MyGLUCallbackArg arg;
-		GLUtesselator *handle = glu_tess_handle;
 		
 		arg.coords = point_coords;
 		arg.flags = point_flags;

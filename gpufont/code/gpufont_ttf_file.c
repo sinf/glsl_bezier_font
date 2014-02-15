@@ -10,6 +10,15 @@
 
 #pragma pack(1)
 
+typedef int8_t int8;
+typedef int16_t int16;
+typedef int32_t int32;
+typedef uint8_t uint8;
+typedef uint16_t uint16;
+typedef uint32_t uint32;
+typedef unsigned uint;
+typedef unsigned short ushort;
+
 enum {
 	DEBUG_DUMP = 1, /* enable/disable level 1 debug messages */
 	DEBUG_DUMP2 = 0, /* enable/disable level 2 debug messages */
@@ -630,9 +639,9 @@ static TrError triangulate_glyphs( Font font[1], size_t first_glyph, size_t last
 {
 	size_t n;
 	TrError err = TR_SUCCESS;
-	void *p = triangulator_begin();
+	struct GLUtesselator *tess = triangulator_begin();
 	
-	if ( !p )
+	if ( !tess )
 		return TR_ALLOC_FAIL;
 	
 	if ( DEBUG_DUMP )
@@ -644,7 +653,7 @@ static TrError triangulate_glyphs( Font font[1], size_t first_glyph, size_t last
 		
 		if ( glyph && IS_SIMPLE_GLYPH( glyph ))
 		{
-			err = triangulate_contours( p, &glyph->tris );
+			err = triangulate_contours( tess, &glyph->tris );
 			if ( err != TR_SUCCESS )
 			{
 				if ( DEBUG_DUMP )
@@ -658,7 +667,7 @@ static TrError triangulate_glyphs( Font font[1], size_t first_glyph, size_t last
 		}
 	}
 	
-	triangulator_end( p );
+	gluDeleteTess( tess );
 	return err;
 }
 
@@ -1030,7 +1039,7 @@ static FontStatus read_ttc( FILE *fp, Font font[1] )
 	return read_offset_table( fp, font );
 }
 
-FontStatus load_ttf_file( Font font[1], const char filename[] )
+FontStatus load_ttf_file( struct Font *font, const char filename[] )
 {
 	FILE *fp = NULL;
 	uint32 file_ident;

@@ -1,13 +1,9 @@
 #include <stdlib.h>
-#include <stdio.h>
 #include <string.h>
 #include "gpufont_data.h"
 
 void destroy_font( Font *font )
 {
-	if ( font->gl_buffers[0] || font->gl_buffers[1] || font->gl_buffers[2] ) {
-		printf( "destroy_font: leaking graphics memory\n" );
-	}
 	if ( font->glyphs )
 	{
 		if ( font->all_glyphs )
@@ -21,7 +17,7 @@ void destroy_font( Font *font )
 		else
 		{
 			/* must delete everything individually */
-			uint32 n;
+			size_t n;
 			for( n=0; n<font->num_glyphs; n++ )
 			{
 				SimpleGlyph *g = font->glyphs[n];
@@ -53,14 +49,14 @@ int merge_glyph_data( Font *font )
 	size_t const index_size = sizeof( dummy.indices[0] );
 	size_t const flag_size = sizeof( dummy.flags[0] );
 	
-	uint32 total_points = 0;
-	uint32 total_indices = 0;
-	uint32 total_glyphs_mem = 0;
-	uint8 *all_glyphs=NULL, *glyph_p;
+	size_t total_points = 0;
+	size_t total_indices = 0;
+	size_t total_glyphs_mem = 0;
+	char *all_glyphs=NULL, *glyph_p;
 	float *all_points=NULL, *point_p;
 	PointIndex *all_indices=NULL, *index_p;
 	PointFlag *all_flags=NULL, *flag_p;
-	uint32 n;
+	size_t n;
 	
 	for( n=0; n<font->num_glyphs; n++ )
 	{
@@ -76,10 +72,6 @@ int merge_glyph_data( Font *font )
 			}
 		}
 	}
-	
-	printf( "Merging glyph data\n" );
-	printf( "Total points: %u (%u KiB)\n", (uint) total_points, (uint)(total_points*point_size/1024) );
-	printf( "Total indices: %u (%u KiB)\n", (uint) total_indices, (uint)(total_indices*index_size/1024) );
 	
 	if ( total_points ) {
 		all_points = malloc( point_size * total_points );
@@ -116,8 +108,8 @@ int merge_glyph_data( Font *font )
 			
 			if ( IS_SIMPLE_GLYPH( g ) )
 			{
-				uint32 np = g->tris.num_points_total;
-				uint32 ni = g->tris.num_indices_total;
+				size_t np = g->tris.num_points_total;
+				size_t ni = g->tris.num_indices_total;
 				
 				if ( np )
 				{
@@ -148,7 +140,7 @@ int merge_glyph_data( Font *font )
 				size_t s = COMPOSITE_GLYPH_SIZE( g->num_parts );
 				memcpy( glyph_p, g, s );
 				free( g );
-				glyph_p += s;
+				glyph_p += s / sizeof( *glyph_p );
 			}
 		}
 	}

@@ -6,7 +6,9 @@
 #include "opengl.h"
 #include "shaders.h"
 #include "matrix.h"
+#include "types.h"
 
+#include "gpufont_data.h"
 #include "gpufont_ttf_file.h"
 #include "gpufont_layout.h"
 #include "gpufont_draw.h"
@@ -106,32 +108,8 @@ static GlyphBatch *load_text_file( Font *font, const char *filename )
 		len >>= 2;
 		if ( text ) {
 			/* There was enough system memory available to hold the contents of the file. Yippee! */
-			if ( fread( text, 4, len, fp ) == (size_t) len ) {
-				
-				uint32 dummy = 0;
-				uint32 *prev_space = &dummy;
-				size_t max_line_len = 80;
-				size_t column = 0;
-				long x;
-				
-				/* Try wrap text at words when possible */
-				for( x=0; x<len; x++ )
-				{
-					column++;
-					
-					if ( text[x] == ' ' )
-						prev_space = text + x;
-					
-					if ( text[x] == '\n' )
-						column = 0;
-					
-					if ( column >= max_line_len && text + x - prev_space < 10 )
-					{
-						*prev_space = '\n';
-						column = 0;
-					}
-				}
-				
+			if ( fread( text, 4, len, fp ) == (size_t) len )
+			{
 				layout = do_simple_layout( font, text, len, 80, -1 );
 				if ( !layout )
 				{
@@ -183,6 +161,9 @@ static int load_resources( void )
 	
 	millis = SDL_GetTicks() - millis;
 	printf( "Loading the font file took %u milliseconds\n", (uint) millis );
+	
+	printf( "Total points: %u\n", (unsigned) the_font.total_points );
+	printf( "Total indices: %u\n", (unsigned) the_font.total_indices );
 	
 	if ( the_char_code )
 	{

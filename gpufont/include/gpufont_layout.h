@@ -1,7 +1,7 @@
 #ifndef _FONT_LAYOUT_H
 #define _FONT_LAYOUT_H
 #include <stddef.h>
-#include "gpufont_data.h"
+#include <stdint.h>
 
 /*
 Inputs:
@@ -18,8 +18,10 @@ typedef struct {
 	size_t batch_count; /* how many batches */
 } GlyphBatch;
 
-GlyphBatch *do_simple_layout( Font *font, uint32 *text, size_t text_len, size_t max_line_len, float line_height_scale );
-void draw_glyph_batches( Font *font, GlyphBatch *b, float global_transform[16], int draw_flags );
+struct Font;
+
+GlyphBatch *do_simple_layout( struct Font *font, uint32_t *text, size_t text_len, size_t max_line_len, float line_height_scale );
+void draw_glyph_batches( struct Font *font, GlyphBatch *b, float global_transform[16], int draw_flags );
 void delete_layout( GlyphBatch *b );
 
 #endif

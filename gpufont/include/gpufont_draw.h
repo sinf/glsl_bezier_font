@@ -1,6 +1,6 @@
 #ifndef _FONT_SHADER_H
 #define _FONT_SHADER_H
-#include "gpufont_data.h"
+#include <stddef.h>
 
 /*
 
@@ -36,17 +36,20 @@ enum {
 	F_DRAW_TRIS=( F_DRAW_CONVEX | F_DRAW_CONCAVE | F_DRAW_SOLID )
 };
 
-int init_font_shader( uint32 linked_compiled_font_program );
+typedef unsigned GLuint_; /* don't need bloated opengl header for just this one type */
+struct Font;
+
+int init_font_shader( GLuint_ linked_compiled_font_program );
 void deinit_font_shader( void ); /* deletes the program passed to init_font_shader */
 
-void prepare_font( Font * );
-void release_font( Font * );
+void prepare_font( struct Font * );
+void release_font( struct Font * );
 
-void begin_text( Font * );
+void begin_text( struct Font * );
 void end_text( void );
 
 /* None of the arguments must be NULL
 (even though this function passes NULL to itself) */
-void draw_glyphs( Font *font, float global_transform[16], uint32 glyph_index, uint32 num_instances, float positions[], int flags );
+void draw_glyphs( struct Font *font, float global_transform[16], unsigned long glyph_index, size_t num_instances, float positions[], int flags );
 
 #endif

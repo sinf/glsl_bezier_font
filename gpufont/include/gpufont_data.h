@@ -3,42 +3,32 @@
 
 #include <stddef.h>
 #include <stdint.h>
-typedef int8_t int8;
-typedef int16_t int16;
-typedef int32_t int32;
-typedef int64_t int64;
-typedef uint8_t uint8;
-typedef uint16_t uint16;
-typedef uint32_t uint32;
-typedef uint64_t uint64;
-typedef unsigned int uint;
-typedef unsigned short ushort;
 
 #include "nibtree.h"
 #define set_cmap_entry( font, code, glyph_index ) nibtree_set( &(font)->cmap, (code), (glyph_index) )
 #define get_cmap_entry( font, code ) nibtree_get( &(font)->cmap, (code) )
 
 /* todo: use these everywhere */
-typedef uint16 PointIndex;
-typedef uint32 PointFlag;
+typedef uint16_t PointIndex;
+typedef uint32_t PointFlag;
 
 /* Glyph outline converted to triangles */
-typedef struct {
+typedef struct GlyphTriangles {
 	float *points; /* 2 floats per point */
 	PointIndex *indices; /* 1. convex curves 2. concave curves 3. solid triangles */
 	PointFlag *flags; /* on-curve flags */
-	uint16 *end_points; /* Straight from TTF. Free'd after triangulation by ttf_file.c */
-	uint16 num_points_total; /* total number of points, including generated points */
-	uint16 num_points_orig; /* number of the original points from TTF file */
-	uint16 num_indices_total;
-	uint16 num_indices_convex;
-	uint16 num_indices_concave;
-	uint16 num_indices_solid;
-	uint16 num_contours; /* only used internally */
+	uint16_t *end_points; /* Straight from TTF. Free'd after triangulation by ttf_file.c */
+	uint16_t num_points_total; /* total number of points, including generated points */
+	uint16_t num_points_orig; /* number of the original points from TTF file */
+	uint16_t num_indices_total;
+	uint16_t num_indices_convex;
+	uint16_t num_indices_concave;
+	uint16_t num_indices_solid;
+	uint16_t num_contours; /* only used internally */
 } GlyphTriangles;
 
-typedef struct {
-	uint32 num_parts; /* if nonzero, then this struct is actually a CompositeGlyph and has no 'tris' field */
+typedef struct SimpleGlyph {
+	uint32_t num_parts; /* if nonzero, then this struct is actually a CompositeGlyph and has no 'tris' field */
 	GlyphTriangles tris;
 } SimpleGlyph;
 
@@ -50,7 +40,7 @@ struct CompositeGlyph {
 }
 */
 
-typedef struct {
+typedef struct GlobalMetrics {
 	float ascent;
 	float descent;
 	float linegap;
@@ -60,7 +50,7 @@ typedef struct {
 #define COMPOSITE_GLYPH_SIZE(num_parts) (( 4+(num_parts)*(4+6*sizeof(float)) ))
 #define ENABLE_COMPOSITE_GLYPHS 0
 
-typedef struct {
+typedef struct Font {
 	SimpleGlyph **glyphs; /* Array of pointers to CompositeGlyph and SimpleGlyph */
 	void *all_glyphs; /* SimpleGlyphs and composite glyphs */
 	float *all_points;
@@ -68,8 +58,8 @@ typedef struct {
 	PointFlag *all_flags;
 	size_t total_points;
 	size_t total_indices;
-	uint32 gl_buffers[4]; /* vao, vbo, ibo, another vbo */
-	uint32 num_glyphs; /* sizeof of glyphs array */
+	uint32_t gl_buffers[4]; /* vao, vbo, ibo, another vbo */
+	size_t num_glyphs; /* sizeof of glyphs array */
 	NibTree cmap;
 	GlobalMetrics metrics;
 	float *metrics_adv_x; /* one per glyph */

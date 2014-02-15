@@ -233,7 +233,7 @@ static SimpleGlyph *read_simple_glyph( FILE *fp, float units_per_em, uint16 num_
 	}
 	
 	final_flags = malloc( MAX_GLYPH_POINTS * sizeof( PointFlag ) );
-	final_points = malloc( MAX_GLYPH_POINTS * sizeof( PointCoord ) * 2 );
+	final_points = malloc( MAX_GLYPH_POINTS * sizeof( float ) * 2 );
 	
 	if ( !final_points || !final_flags ) {
 		*status = F_FAIL_ALLOC;
@@ -650,6 +650,10 @@ static TrError triangulate_glyphs( Font font[1], size_t first_glyph, size_t last
 					printf( "Triangulation failed. Error code = %u\n", (uint) err );
 				return err;
 			}
+			
+			free( glyph->tris.end_points );
+			glyph->tris.end_points = NULL;
+			glyph->tris.num_contours = 0;
 		}
 	}
 	

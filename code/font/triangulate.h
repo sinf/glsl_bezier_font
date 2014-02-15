@@ -21,7 +21,7 @@ typedef enum {
 void *triangulator_begin( void );
 void triangulator_end( void * );
 
-/*
+/* Before calling triangulate_contours()
 gt->end_points must not be NULL
 gt->points must be allocated to 2*MAX_GLYPH_POINTS elements
 gt->flags must be allocated to MAX_GLYPH_POINTS elements

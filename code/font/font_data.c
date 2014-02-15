@@ -48,15 +48,16 @@ void destroy_font( Font *font )
 /* Merges all vertex & index arrays together so that every glyph can be put into the same VBO. Returns 0 if failure, 1 if success */
 int merge_glyph_data( Font *font )
 {
-	size_t const point_size = sizeof( PointCoord ) * 2;
-	size_t const index_size = sizeof( PointIndex );
-	size_t const flag_size = sizeof( PointFlag );
+	GlyphTriangles dummy;
+	size_t const point_size = sizeof( dummy.points[0] ) * 2;
+	size_t const index_size = sizeof( dummy.indices[0] );
+	size_t const flag_size = sizeof( dummy.flags[0] );
 	
 	uint32 total_points = 0;
 	uint32 total_indices = 0;
 	uint32 total_glyphs_mem = 0;
 	uint8 *all_glyphs=NULL, *glyph_p;
-	PointCoord *all_points=NULL, *point_p;
+	float *all_points=NULL, *point_p;
 	PointIndex *all_indices=NULL, *index_p;
 	PointFlag *all_flags=NULL, *flag_p;
 	uint32 n;

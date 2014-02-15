@@ -183,10 +183,10 @@ void prepare_font( Font *font )
 	/* point coords & indices */
 	glBindBuffer( GL_ARRAY_BUFFER, buf[1] );
 	glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, buf[2] );
-	glBufferData( GL_ARRAY_BUFFER, font->total_points * sizeof( PointCoord ) * 2, font->all_points, GL_STATIC_DRAW );
+	glBufferData( GL_ARRAY_BUFFER, font->total_points * sizeof( float ) * 2, font->all_points, GL_STATIC_DRAW );
 	glBufferData( GL_ELEMENT_ARRAY_BUFFER, font->total_indices * sizeof( PointIndex ), font->all_indices, GL_STATIC_DRAW );
 	glEnableVertexAttribArray( 0 );
-	glVertexAttribPointer( 0, 2, GL_FLOAT_TYPE( PointCoord ), GL_FALSE, 0, 0 );
+	glVertexAttribPointer( 0, 2, GL_FLOAT, GL_FALSE, 0, 0 );
 	
 	/* point flags */
 	glBindBuffer( GL_ARRAY_BUFFER, buf[3] );

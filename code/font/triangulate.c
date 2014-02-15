@@ -24,42 +24,24 @@ typedef struct {
 	int is_hole;
 } Contour;
 
-#if 1
 #define subs_vec2(c,a,b) { (c)[0]=(a)[0]-(b)[0]; (c)[1]=(a)[1]-(b)[1]; }
 #define interpolate(c,a,b,t) { (c)[0]=(a)[0] * (1-t) + (b)[0] * t; (c)[1]=(a)[1] * (1-t) + (b)[1] * t; }
 #define cross2(a,b) ((a)[0]*(b)[1]-(a)[1]*(b)[0])
-#else
-static void subs_vec2( PointCoord c[2], PointCoord const a[2], PointCoord const b[2] )
-{
-	c[0] = a[0] - b[0];
-	c[1] = a[1] - b[1];
-}
-static void interpolate( PointCoord c[2], PointCoord const a[2], PointCoord const b[2], PointCoord t )
-{
-	float q = 1 - t;
-	c[0] = q * a[0] + t * b[0];
-	c[1] = q * a[1] + t * b[1];
-}
-/* Returns Z-component of the resulting vector (because X and Y would be zero) */
-static PointCoord cross2( PointCoord const a[2], PointCoord const b[2] ) {
-	return a[0] * b[1] - a[1] * b[0];
-}
-#endif
 
-static PointCoord ac_cross_ab( PointCoord const a[2], PointCoord const b[2], PointCoord const c[2] )
+static float ac_cross_ab( float const a[2], float const b[2], float const c[2] )
 {
-	PointCoord ab[2], ac[2];
+	float ab[2], ac[2];
 	subs_vec2( ab, b, a );
 	subs_vec2( ac, c, a );
 	return cross2( ac, ab );
 }
 
-static int any_point_in_triangle( PointCoord const coords[], size_t num_points, PointCoord const a[2], PointCoord const b[2], PointCoord const c[2] )
+static int any_point_in_triangle( float const coords[], size_t num_points, float const a[2], float const b[2], float const c[2] )
 {
-	PointCoord ab[2], bc[2], ca[2];
-	PointCoord q[3], w[3];
+	float ab[2], bc[2], ca[2];
+	float q[3], w[3];
 	size_t n;
-	PointCoord const *temp;
+	float const *temp;
 	
 	/* Sort a,b,c by y coordinate such that a[1] <= b[1] <= c[1] */
 	if ( a[1] > b[1] ) {
@@ -106,7 +88,7 @@ static int any_point_in_triangle( PointCoord const coords[], size_t num_points, 
 	
 	for( n=0; n<num_points; n++ )
 	{
-		PointCoord const *p = coords + 2 * n;
+		float const *p = coords + 2 * n;
 		int hits;
 		
 		if ( p[1] > a[1] && p[1] < c[1] )
@@ -131,7 +113,7 @@ static int any_point_in_triangle( PointCoord const coords[], size_t num_points, 
 	return 0;
 }
 
-static void merge_extra_verts( Contour *co, PointCoord coords[], PointFlag flags[], size_t num_orig_points )
+static void merge_extra_verts( Contour *co, float coords[], PointFlag flags[], size_t num_orig_points )
 {
 	struct {
 		LLNodeID a, b, c, d, e;
@@ -153,7 +135,7 @@ static void merge_extra_verts( Contour *co, PointCoord coords[], PointFlag flags
 		&& !( flags[nodes.b] & PT_ON_CURVE )
 		&& ( flags[nodes.c] & PT_ON_CURVE ) )
 		{
-			PointCoord *a, *b, *c, ab[2]; /* , bc[2]; */
+			float *a, *b, *c, ab[2]; /* , bc[2]; */
 			
 			a = coords + 2 * nodes.a;
 			b = coords + 2 * nodes.b;
@@ -165,7 +147,7 @@ static void merge_extra_verts( Contour *co, PointCoord coords[], PointFlag flags
 			/* Subdivide overlapping triangles */
 			if ( any_point_in_triangle( coords, num_orig_points, a, b, c ) )
 			{
-				PointCoord *f, *g;
+				float *f, *g;
 				
 				nodes.f = add_node( &co->points, nodes.b );
 				if ( nodes.f == LL_BAD_INDEX )
@@ -197,7 +179,7 @@ static void merge_extra_verts( Contour *co, PointCoord coords[], PointFlag flags
 				Also, the resulting triangle ACE must not overlap with other geometry (or many glitches happens)
 				*/
 				
-				PointCoord ae[2], ad[2], /* bd[2], */ ed[2], *d, *e;
+				float ae[2], ad[2], /* bd[2], */ ed[2], *d, *e;
 				int sign1, sign2;
 				
 				d = coords + 2 * nodes.d;
@@ -215,8 +197,8 @@ static void merge_extra_verts( Contour *co, PointCoord coords[], PointFlag flags
 				/* ( b and d lie on the same side of line ae ) && ( c lies on that very same side of line bd ) */
 				if ( sign1 == sign2 )
 				{
-					const PointCoord epsilon = 0.0001;
-					PointCoord p[2];
+					const float epsilon = 0.0001;
+					float p[2];
 					
 					interpolate( p, b, d, 0.5 );
 					subs_vec2( p, p, c );
@@ -225,7 +207,7 @@ static void merge_extra_verts( Contour *co, PointCoord coords[], PointFlag flags
 					{
 						/* c lies approximately halfway trough between b and d */
 						
-						PointCoord w;
+						float w;
 						w = e[0] + ed[0] * a[1] - ed[0] * e[1] - ed[1] * a[0];
 						w /= ed[1] * ab[0] - ed[0] * ab[1];
 						p[0] = a[0] + w * ab[0];
@@ -278,7 +260,7 @@ static void merge_extra_verts( Contour *co, PointCoord coords[], PointFlag flags
 }
 
 /* The contour must have at least 1 point */
-static TrError split_consecutive_off_curve_points( Contour *co, PointCoord coords[2*MAX_GLYPH_POINTS], PointFlag flags[MAX_GLYPH_POINTS] )
+static TrError split_consecutive_off_curve_points( Contour *co, float coords[2*MAX_GLYPH_POINTS], PointFlag flags[MAX_GLYPH_POINTS] )
 {
 	LLNodeID a, start;
 	a = start = co->points.root;
@@ -287,8 +269,8 @@ static TrError split_consecutive_off_curve_points( Contour *co, PointCoord coord
 		
 		if ( !( flags[a] & PT_ON_CURVE ) && !( flags[b] & PT_ON_CURVE ) )
 		{
-			PointCoord *coord_a = coords + 2*a;
-			PointCoord *coord_b = coords + 2*b;
+			float *coord_a = coords + 2*a;
+			float *coord_b = coords + 2*b;
 			
 			LLNodeID c = add_node( &co->points, b ); /* add a node between a & b */
 			
@@ -310,7 +292,7 @@ static TrError split_consecutive_off_curve_points( Contour *co, PointCoord coord
 	return TR_SUCCESS;
 }
 
-static double get_signed_polygon_area( PointCoord const coords[], size_t num_points )
+static double get_signed_polygon_area( float const coords[], size_t num_points )
 {
 	size_t a=0, b=1;
 	double area = 0;
@@ -319,7 +301,7 @@ static double get_signed_polygon_area( PointCoord const coords[], size_t num_poi
 		return 0;
 	
 	do {
-		PointCoord const
+		float const
 			*p0 = coords + 2*a,
 			*p1 = coords + 2 *b;
 		
@@ -332,7 +314,7 @@ static double get_signed_polygon_area( PointCoord const coords[], size_t num_poi
 	return area;
 }
 
-static int point_in_polygon( PointCoord const coords[], size_t num_points, PointCoord const p[2] )
+static int point_in_polygon( float const coords[], size_t num_points, float const p[2] )
 {
 	size_t p0=0, p1=1;
 	int inside = 0;
@@ -341,7 +323,7 @@ static int point_in_polygon( PointCoord const coords[], size_t num_points, Point
 		return 0;
 	
 	do {
-		PointCoord const *a, *b;
+		float const *a, *b;
 		a = coords + 2 * p0;
 		b = coords + 2 * p1;
 		
@@ -360,7 +342,7 @@ static int point_in_polygon( PointCoord const coords[], size_t num_points, Point
 }
 
 typedef struct {
-	PointCoord *coords;
+	float *coords;
 	PointFlag *flags;
 	LinkedList *newpts;
 	PointIndex *ptr; /* index output array */
@@ -435,7 +417,7 @@ TrError triangulate_contours( void *glu_tess_handle, GlyphTriangles gt[1] )
 {
 	uint16 num_contours = gt->num_contours;
 	PointFlag *point_flags = gt->flags;
-	PointCoord *point_coords = gt->points;
+	float *point_coords = gt->points;
 	uint16 *end_points = gt->end_points;
 	
 	size_t num_tris[3] = {0,0,0};

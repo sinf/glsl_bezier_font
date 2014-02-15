@@ -9,22 +9,21 @@
 
 /* todo: use these everywhere */
 typedef uint16 PointIndex;
-typedef uint32 PointFlag; /* todo: figure out why uint8 and uint16 don't work */
-typedef float PointCoord;
+typedef uint32 PointFlag;
 
 /* Glyph outline converted to triangles */
 typedef struct {
+	float *points; /* 2 floats per point */
 	PointIndex *indices; /* 1. convex curves 2. concave curves 3. solid triangles */
-	PointCoord *points; /* First come the points from TTF file in the original order, then additional generated points (2 floats per point) */
 	PointFlag *flags; /* on-curve flags */
-	uint16 *end_points; /* straight from TTF */
+	uint16 *end_points; /* Straight from TTF. Free'd after triangulation by ttf_file.c */
 	uint16 num_points_total; /* total number of points, including generated points */
 	uint16 num_points_orig; /* number of the original points from TTF file */
 	uint16 num_indices_total;
 	uint16 num_indices_convex;
 	uint16 num_indices_concave;
 	uint16 num_indices_solid;
-	uint16 num_contours;
+	uint16 num_contours; /* only used internally */
 } GlyphTriangles;
 
 typedef struct {
@@ -53,7 +52,7 @@ typedef struct {
 typedef struct {
 	SimpleGlyph **glyphs; /* Array of pointers to CompositeGlyph and SimpleGlyph */
 	void *all_glyphs; /* SimpleGlyphs and composite glyphs */
-	PointCoord *all_points;
+	float *all_points;
 	PointIndex *all_indices;
 	PointFlag *all_flags;
 	size_t total_points;

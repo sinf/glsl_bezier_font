@@ -3,8 +3,8 @@
 #include <netinet/in.h> /* ntohl */
 #include <string.h> /* memset */
 #include <stdio.h>
-#include "font_file.h"
-#include "opentype.h"
+#include "ttf_file.h"
+#include "ttf_defs.h"
 #include "triangulate.h"
 
 #pragma pack(1)
@@ -604,8 +604,8 @@ FontStatus read_cmap( FILE *fp, Font *font )
 				return F_FAIL_EOF;
 			
 			if ( DEBUG_DUMP ) {
-				printf( "platform = %u | encoding = %u | offset=%08x | format=%d | length=%d\n",
-					plat_enc >> 16, plat_enc & 0xFFFF, subtable_offset, q.format, q.length );
+				printf( "plat_enc = %08x | platform = %u | encoding = %u | offset=%08x | format=%d | length=%d\n",
+					plat_enc, plat_enc >> 16, plat_enc & 0xFFFF, subtable_offset, q.format, q.length );
 			}
 			
 			/* Most common cmap formats seem to be 4 (the most common of all), 6 and 12
@@ -1025,7 +1025,7 @@ static FontStatus read_ttc( FILE *fp, Font font[1] )
 	return read_offset_table( fp, font );
 }
 
-FontStatus load_truetype( Font font[1], const char filename[] )
+FontStatus load_ttf_file( Font font[1], const char filename[] )
 {
 	FILE *fp = NULL;
 	uint32 file_ident;

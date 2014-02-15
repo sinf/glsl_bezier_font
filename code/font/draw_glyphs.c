@@ -2,9 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "opengl.h"
-#include "shaders.h"
-#include "font_shader.h"
-#include "matrix.h"
+#include "draw_glyphs.h"
 
 /* todo:
 - Draw the glyphs properly instead of points/lines
@@ -61,8 +59,11 @@ static void prepare_em_sq( void )
 	glBindVertexArray( 0 );
 }
 
-int load_font_shaders( void )
+int init_font_shader( uint32 linked_compiled_prog )
 {
+	int size_check[ sizeof( linked_compiled_prog ) == sizeof( GLuint ) ];
+	(void) size_check;
+	
 	/*
 	if ( !have_opengl_ext( "GL_ARB_draw_instanced" ) )
 	{
@@ -70,13 +71,10 @@ int load_font_shaders( void )
 		return 0;
 	}
 	*/
-	
 	glGetIntegerv( GL_MAX_UNIFORM_BLOCK_SIZE, &max_ubo_size );
 	printf( "Max uniform block size: %d bytes (%d vec2's)\n", (int) max_ubo_size, (int)(max_ubo_size/sizeof(float)/2) );
 	
-	the_prog = load_shader_prog( "data/bezv.glsl", "data/bezf.glsl" );
-	if ( !the_prog )
-		return 0;
+	the_prog = linked_compiled_prog;
 	
 	glUseProgram( the_prog );
 	uniforms.the_matrix = glGetUniformLocation( the_prog, "the_matrix" );
@@ -112,7 +110,7 @@ int load_font_shaders( void )
 	return 1;
 }
 
-void unload_font_shaders( void )
+void deinit_font_shader( void )
 {
 	glDeleteVertexArrays( 1, &em_sq_vao );
 	glDeleteBuffers( 1, &em_sq_vbo );
@@ -241,24 +239,16 @@ static void set_color( int c )
 	glUniform4fv( uniforms.the_color, 1, colors[c] );
 }
 
-static GLuint cur_vao = 0;
-static void bind_vertex_array( GLuint vao )
-{
-	if ( cur_vao == vao ) return;
-	glBindVertexArray( vao );
-	cur_vao = vao;
-}
-
 void begin_text( Font *font )
 {
 	glUseProgram( the_prog );
 	set_color( 0 );
-	bind_vertex_array( font->gl_buffers[0] );
+	glBindVertexArray( font->gl_buffers[0] );
 }
 
 void end_text( void )
 {
-	bind_vertex_array( 0 );
+	glBindVertexArray( 0 );
 }
 
 static void send_matrix( float matrix[16] )
@@ -411,9 +401,9 @@ static void draw_squares( Font *font, uint32 num_instances, int flags )
 	if ( flags & F_DEBUG_COLORS )
 		set_color( 2 );
 	set_fill_mode( FILL_SOLID );
-	bind_vertex_array( em_sq_vao );
+	glBindVertexArray( em_sq_vao );
 	glDrawArraysInstancedARB( GL_LINE_LOOP, 0, 4, num_instances );
-	bind_vertex_array( font->gl_buffers[0] );
+	glBindVertexArray( font->gl_buffers[0] );
 }
 
 void draw_glyphs( Font *font, float global_transform[16], uint32 glyph_index, uint32 num_instances, float positions[], int flags )

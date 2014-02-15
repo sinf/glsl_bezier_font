@@ -6,7 +6,7 @@
 
 #include "types.h"
 #include "font_data.h"
-#include "opentype.h"
+#include "ttf_defs.h"
 #include "linkedlist.h"
 #include "triangulate.h"
 
@@ -313,7 +313,7 @@ static TrError split_consecutive_off_curve_points( Contour *co, PointCoord coord
 static double get_signed_polygon_area( PointCoord const coords[], size_t num_points )
 {
 	size_t a=0, b=1;
-	double area;
+	double area = 0;
 	
 	if ( num_points < 3 )
 		return 0;
@@ -443,6 +443,7 @@ TrError triangulate_contours( void *glu_tess_handle, GlyphTriangles gt[1] )
 	PointIndex concave_tris[MAX_GLYPH_TRI_INDICES];
 	PointIndex solid_tris[MAX_GLYPH_TRI_INDICES];
 	PointIndex *triangles[3]; /* triangle indices: 1. convex 2. concave 3. solid */
+	
 	LLNode node_pool[MAX_GLYPH_POINTS];
 	Contour con[MAX_GLYPH_CONTOURS];
 	uint16 start=0, end, c;
@@ -528,7 +529,9 @@ TrError triangulate_contours( void *glu_tess_handle, GlyphTriangles gt[1] )
 	/* Triangulate */
 	if ( 1 )
 	{
-		GLdouble glu_coords[MAX_GLYPH_TRI_INDICES+1][2];
+		/* needs to be zero-initialized because otherwise GLU goes use uninitialized values (z coordinates) */
+		GLdouble glu_coords[MAX_GLYPH_TRI_INDICES+1][2] = {{0,0}};
+		
 		MyGLUCallbackArg arg;
 		GLUtesselator *handle = glu_tess_handle;
 		

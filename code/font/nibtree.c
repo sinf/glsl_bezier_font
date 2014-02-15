@@ -63,13 +63,13 @@ int nibtree_set( NibTree tree[1], uint32 key, uint32 new_value )
 		{
 			/* Branch doesn't exist so create it */
 			
+			size_t parent_index = node - tree->data;
 			offset = add_node( tree );
 			
 			if ( !offset )
 				return 0;
 			
-			node = tree->data + ( node - tree->data );
-			node[ nibble ] = offset;
+			tree->data[ parent_index + nibble ] = offset;
 			memset( tree->data + offset, 0, 16 * 4 );
 		}
 		

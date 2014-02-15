@@ -1,5 +1,6 @@
 #ifndef _FONT_SHADER_H
 #define _FONT_SHADER_H
+#include "types.h"
 #include "font_data.h"
 
 /*
@@ -36,8 +37,9 @@ enum {
 	F_DRAW_TRIS=( F_DRAW_CONVEX | F_DRAW_CONCAVE | F_DRAW_SOLID )
 };
 
-int load_font_shaders( void );
-void unload_font_shaders( void );
+int init_font_shader( uint32 linked_compiled_font_program );
+void deinit_font_shader( void ); /* deletes the program passed to init_font_shader */
+
 void prepare_font( Font * );
 void release_font( Font * );
 

@@ -30,6 +30,6 @@ typedef enum {
 } FontStatus;
 
 /* Returns 0 if success and nonzero if failure */
-FontStatus load_truetype( Font font[1], const char filename[] );
+FontStatus load_ttf_file( Font font[1], const char filename[] );
 
 #endif

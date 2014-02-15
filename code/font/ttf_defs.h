@@ -5,8 +5,8 @@
 #pragma pack(1)
 
 /*
-Some OpenType data structures.
-Used by font_file.c
+Some OpenType / Truetype data structures that appear in TTF files.
+Only used internally by ttf_file.c and triangulate.c
 */
 
 typedef struct {

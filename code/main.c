@@ -7,10 +7,9 @@
 #include "shaders.h"
 #include "matrix.h"
 
-#include "font_data.h"
-#include "font_file.h"
-#include "font_layout.h"
-#include "font_shader.h"
+#include "font/ttf_file.h"
+#include "font/layout.h"
+#include "font/draw_glyphs.h"
 
 /* todo:
 Draw one huge glyph
@@ -143,9 +142,16 @@ static GlyphBatch *load_text_file( Font *font, const char *filename )
 				
 				layout = do_simple_layout( font, text, len, 80, -1 );
 				if ( !layout )
+				{
 					printf( "Failed to lay out text\n" );
+				}
 				else
-					printf( "Success! Characters in file: %ld\n", len );
+				{
+					printf(
+					"Success!\n"
+					"Characters in file: %ld\n"
+					"do_simple_layout gave us %u batches\n", len, (uint) layout->batch_count );
+				}
 			}
 			free( text );
 		} else
@@ -164,13 +170,18 @@ static int load_resources( void )
 	
 	int status;
 	Uint32 millis;
+	GLuint font_prog;
 	
-	if ( !load_font_shaders() )
+	font_prog = load_shader_prog( "data/bezv.glsl", "data/bezf.glsl" );
+	if ( !font_prog )
+		return 0;
+	
+	if ( !init_font_shader( font_prog ) )
 		return 0;
 	
 	printf( "Font: '%s'\n", the_font_filename );
 	millis = SDL_GetTicks();
-	status = load_truetype( &the_font, the_font_filename );
+	status = load_ttf_file( &the_font, the_font_filename );
 	
 	if ( status )
 	{

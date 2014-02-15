@@ -11,14 +11,6 @@
 #include "gpufont_layout.h"
 #include "gpufont_draw.h"
 
-/* todo:
-Draw one huge glyph
-Draw a block of text
-Draw asian characters
-Draw transformed/animated text
-Move all font loading stuff into a self-contained library
-*/
-
 static enum {
 	CULL_OFF=0,
 	CULL_CW=1,
@@ -237,22 +229,6 @@ static void free_resources( void )
 	release GPU buffers etc.. */
 }
 
-static void reset_simulation( void )
-{
-	/* set initial simulation state */
-}
-
-static void update_simulation( double dt )
-{
-	/* advance simulation */
-	(void) dt;
-}
-
-static void update_vbos( void )
-{
-	/* update VBO's used to render the scene */
-}
-
 static size_t generate_grid_floor( GLuint vao, GLuint vbo, size_t horz_lines, size_t vert_lines, float x0, float y0, float x1, float y1 )
 {
 	GLfloat verts[1024][2];
@@ -441,11 +417,22 @@ static void quit( void )
 static void help_screen_exit( void )
 {
 	printf(
-	"Valid arguments:\n"
+	"---- Valid command line arguments ----\n"
 	"-f FILENAME    Load font from given TTF file\n"
 	"-t FILENAME    Load text from given file. The file must be in UTF-32 encoding\n"
 	"-c NUMBER      This character code will be displayed in a grid pattern\n"
 	"-h             Print this information and exit\n"
+	);
+	printf(
+	"\n---- Camera controls ----\n"
+	"A,W,S,D move the camera\n"
+	"Mouse wheel moves the camera along Y axis\n"
+	"Holding LCTRL, SHIFT, or ALT multiply speed by factors 0.05, 10 and 100\n"
+	"T: Save camera position to camera.dat\n"
+	"J: Print camera position\n"
+	"M: Toggle wireframe modes (off,lines,points)\n"
+	"N: Toggle back face fulling (off,cw,ccw)\n"
+	"\n"
 	);
 	exit( 0 );
 }
@@ -482,8 +469,6 @@ int main( int argc, char *argv[] )
 	int win_w = 800;
 	int win_h = 600;
 	Uint32 prev_ticks;
-	int simulating = 0;
-	int fast_forward = 0;
 	int msaa_enabled = 1;
 	int msaa_samples = 8;
 	
@@ -562,7 +547,6 @@ int main( int argc, char *argv[] )
 		SDL_Quit();
 		return 1;
 	}
-	update_vbos();
 	
 	printf( "** Entering main loop\n" );
 	prev_ticks = SDL_GetTicks();
@@ -570,11 +554,12 @@ int main( int argc, char *argv[] )
 	for( ;; )
 	{
 		SDL_Event e;
-		Uint32 now_ticks;
+		Uint32 now_ticks, ticks_passed;
 		double timestep;
 		
 		now_ticks = SDL_GetTicks();
-		timestep = ( now_ticks - prev_ticks ) / 1000.0;
+		ticks_passed = now_ticks - prev_ticks;
+		timestep = ticks_passed / 1000.0;
 		prev_ticks = now_ticks;
 		
 		while( SDL_PollEvent(&e) )
@@ -584,22 +569,14 @@ int main( int argc, char *argv[] )
 				case SDL_KEYDOWN:
 					switch( e.key.keysym.sym )
 					{
-						case SDLK_SPACE:
-							printf( (( simulating = !simulating )) ? "** Unpaused\n" : "** Paused\n" );
-							break;
-						case SDLK_c:
-							update_simulation( 1.0 / 50 );
-							update_vbos();
-							break;
-						case SDLK_r:
-							reset_simulation();
-							update_vbos();
-							break;
 						case SDLK_j:
 							printf( "%.4f %.4f %.4f | %.4f %.4f\n", cam_x, cam_y, cam_z, cam_yaw, cam_pitch );
 							break;
 						case SDLK_n:
-							printf( "Cull mode: %s\n", ( cull_mode = ( cull_mode + 1 ) % 3 ) ? ( cull_mode == CULL_CW ? "clockwise" : "counterclockwise" ) : "disabled" );
+							printf( "Cull mode: %s\n",
+								( cull_mode = ( cull_mode + 1 ) % 3 )
+								? ( cull_mode == CULL_CW ? "clockwise" : "counterclockwise" )
+								: "disabled" );
 							break;
 						case SDLK_m:
 							wire_mode = ( wire_mode + 1 ) % 3;
@@ -619,9 +596,6 @@ int main( int argc, char *argv[] )
 								fclose( cam_fp );
 								printf( "Camera position saved\n" );
 							}
-							break;
-						case SDLK_v:
-							fast_forward = !fast_forward;
 							break;
 						default:
 							break;
@@ -714,19 +688,8 @@ int main( int argc, char *argv[] )
 			cam_z += v[2];
 		}
 		
-		if ( simulating )
-		{
-			int n, loops = fast_forward ? 5 : 1;
-			for( n=0; n<loops; n++ )
-				update_simulation( timestep );
-			update_vbos();
-		}
-		
 		repaint();
 		SDL_GL_SwapBuffers();
-		
-		if ( 0 )
-			SDL_Delay( 20 );
 	}
 	
 	quit();

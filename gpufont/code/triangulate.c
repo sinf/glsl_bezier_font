@@ -4,8 +4,7 @@
 #include <math.h>
 #include <GL/glu.h>
 
-#include "types.h"
-#include "font_data.h"
+#include "gpufont_data.h"
 #include "ttf_defs.h"
 #include "linkedlist.h"
 #include "triangulate.h"

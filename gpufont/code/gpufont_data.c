@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include "font_data.h"
+#include "gpufont_data.h"
 
 void destroy_font( Font *font )
 {

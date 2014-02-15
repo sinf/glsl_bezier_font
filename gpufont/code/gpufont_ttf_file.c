@@ -3,7 +3,8 @@
 #include <netinet/in.h> /* ntohl */
 #include <string.h> /* memset */
 #include <stdio.h>
-#include "ttf_file.h"
+#include "gpufont_data.h"
+#include "gpufont_ttf_file.h"
 #include "ttf_defs.h"
 #include "triangulate.h"
 

@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "opengl.h"
-#include "draw_glyphs.h"
+#include "gpufont_draw.h"
 
 /* todo:
 - Draw the glyphs properly instead of points/lines

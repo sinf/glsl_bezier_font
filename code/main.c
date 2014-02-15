@@ -7,9 +7,9 @@
 #include "shaders.h"
 #include "matrix.h"
 
-#include "font/ttf_file.h"
-#include "font/layout.h"
-#include "font/draw_glyphs.h"
+#include "gpufont_ttf_file.h"
+#include "gpufont_layout.h"
+#include "gpufont_draw.h"
 
 /* todo:
 Draw one huge glyph

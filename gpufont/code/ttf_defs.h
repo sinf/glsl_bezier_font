@@ -1,6 +1,6 @@
 #ifndef _OPENTYPE_DEFS_H
 #define _OPENTYPE_DEFS_H
-#include "types.h"
+#include "gpufont_data.h"
 #pragma pack(push)
 #pragma pack(1)
 

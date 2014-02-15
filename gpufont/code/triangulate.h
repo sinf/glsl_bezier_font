@@ -1,7 +1,6 @@
 #ifndef _TRIANGULATE_H
 #define _TRIANGULATE_H
-#include "font_data.h"
-#include "types.h"
+#include "gpufont_data.h"
 
 /* memory limits */
 enum {

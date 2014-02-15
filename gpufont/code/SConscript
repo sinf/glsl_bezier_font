@@ -1,0 +1,8 @@
+e=Environment()
+e.Append(CCFLAGS=Split("-ansi -pedantic -Wall -Wextra -Werror -g -fopenmp"))
+e.Append(LIBS=["m"])
+e.Append(CPPPATH=["../include"])
+e.ParseConfig("pkg-config --cflags glew gl glu")
+s=Glob("*.c")
+o=e.Object(s)
+e.StaticLibrary(target="../libgpufont.a",source=o)

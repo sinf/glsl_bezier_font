@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <assert.h>
-#include "draw_glyphs.h"
-#include "layout.h"
+#include "gpufont_draw.h"
+#include "gpufont_layout.h"
 
 typedef struct {
 	uint32 glyph;

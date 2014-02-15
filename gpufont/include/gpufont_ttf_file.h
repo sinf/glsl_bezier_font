@@ -1,6 +1,6 @@
 #ifndef _FONT_FILE_H
 #define _FONT_FILE_H
-#include "font_data.h"
+#include "gpufont_data.h"
 
 /*
 Microsoft's OpenType specification:

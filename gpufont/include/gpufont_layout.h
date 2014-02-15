@@ -1,7 +1,7 @@
 #ifndef _FONT_LAYOUT_H
 #define _FONT_LAYOUT_H
 #include <stddef.h>
-#include "font_data.h"
+#include "gpufont_data.h"
 
 /*
 Inputs:

@@ -1,7 +1,6 @@
 #ifndef _FONT_SHADER_H
 #define _FONT_SHADER_H
-#include "types.h"
-#include "font_data.h"
+#include "gpufont_data.h"
 
 /*
 

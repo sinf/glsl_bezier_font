@@ -4,9 +4,9 @@
 
 static int initialize( NibTree tree[1] )
 {
-	uint32 len = 1024;
+	NibValue len = 1024;
 	
-	tree->data = malloc( len * 4 );
+	tree->data = malloc( sizeof( NibValue ) * len );
 	tree->data_len = len;
 	tree->next_offset = 16;
 	
@@ -14,22 +14,22 @@ static int initialize( NibTree tree[1] )
 		return 0;
 	
 	/* clear the root branch with invalid offsets */
-	memset( tree->data, 0, 16 * 4 );
+	memset( tree->data, 0, sizeof( NibValue ) * 16 );
 	
 	return 1;
 }
 
-static uint32 add_node( NibTree tree[1] )
+static NibValue add_node( NibTree tree[1] )
 {
-	uint32 pos = tree->next_offset;
-	uint32 end = tree->next_offset + 16;
+	NibValue pos = tree->next_offset;
+	NibValue end = tree->next_offset + 16;
 	
 	while( end > tree->data_len )
 	{
-		uint32 new_len = 2 * tree->data_len;
-		uint32 *new_data;
+		NibValue new_len = 2 * tree->data_len;
+		NibValue *new_data;
 		
-		new_data = realloc( tree->data, new_len * 4 );
+		new_data = realloc( tree->data, sizeof( NibValue ) * new_len );
 		if ( !new_data )
 			return 0;
 		
@@ -41,11 +41,11 @@ static uint32 add_node( NibTree tree[1] )
 	return pos;
 }
 
-int nibtree_set( NibTree tree[1], uint32 key, uint32 new_value )
+int nibtree_set( NibTree tree[1], NibValue key, NibValue new_value )
 {
-	uint32 *node;
-	uint32 nibble_pos = 28;
-	uint32 nibble, offset;
+	NibValue *node;
+	NibValue nibble_bit_pos = 28;
+	NibValue nibble, offset;
 	
 	if ( !tree->data ) {
 		if ( !initialize( tree ) )
@@ -55,8 +55,8 @@ int nibtree_set( NibTree tree[1], uint32 key, uint32 new_value )
 	node = tree->data;
 	
 	do {
-		nibble = ( key >> nibble_pos ) & 0xF;
-		nibble_pos -= 4;
+		nibble = ( key >> nibble_bit_pos ) & 0xF;
+		nibble_bit_pos -= 4;
 		offset = node[ nibble ];
 		
 		if ( !offset )
@@ -70,21 +70,21 @@ int nibtree_set( NibTree tree[1], uint32 key, uint32 new_value )
 				return 0;
 			
 			tree->data[ parent_index + nibble ] = offset;
-			memset( tree->data + offset, 0, 16 * 4 );
+			memset( tree->data + offset, 0, sizeof( NibValue ) * 16 );
 		}
 		
 		node = tree->data + offset;
-	} while( nibble_pos );
+	} while( nibble_bit_pos );
 	
 	node[ key & 0xF ] = new_value;
 	return 1;
 }
 
-uint32 nibtree_get( NibTree tree[1], uint32 key )
+NibValue nibtree_get( NibTree tree[1], NibValue key )
 {
-	uint32 *node = tree->data;
-	uint32 nibble_pos = 28;
-	uint32 nibble, offset;
+	NibValue *node = tree->data;
+	NibValue nibble_pos = 28;
+	NibValue nibble, offset;
 	
 	if ( !node )
 		return 0;

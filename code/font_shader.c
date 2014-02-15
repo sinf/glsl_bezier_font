@@ -34,13 +34,14 @@ typedef enum {
 
 enum {
 	BATCH_SIZE = 2024, /* 1024 for chinese, 2024 for western??? */
-	UBLOCK_BINDING = 1,
+	UBLOCK_BINDING = 0,
 	USE_UBO = 0
 };
 
 static GLuint the_prog = 0;
 static GLuint em_sq_vao = 0, em_sq_vbo = 0;
 static float const em_sq_points[4*2] = {0,0,1,0,1,1,0,1};
+static GLint max_ubo_size = 0;
 
 static void prepare_em_sq( void )
 {
@@ -70,7 +71,6 @@ int load_font_shaders( void )
 	}
 	*/
 	
-	GLint max_ubo_size;
 	glGetIntegerv( GL_MAX_UNIFORM_BLOCK_SIZE, &max_ubo_size );
 	printf( "Max uniform block size: %d bytes (%d vec2's)\n", (int) max_ubo_size, (int)(max_ubo_size/sizeof(float)/2) );
 	
@@ -84,9 +84,26 @@ int load_font_shaders( void )
 	uniforms.fill_mode = glGetUniformLocation( the_prog, "fill_mode" );
 	
 	if ( USE_UBO ) {
-		uniforms.glyph_positions_ub = glGetUniformBlockIndex( the_prog, "GlyphPosition" );
-		glUniformBlockBinding( the_prog, uniforms.glyph_positions_ub, UBLOCK_BINDING );
+		/* temporarily moved to draw_glyphs */
+		/*
+		const GLchar *block_name = "GlyphPositions";
+		GLuint block_index;
+		
+		printf( "Setting up uniform block\n" );
+		block_index = glGetUniformBlockIndex( the_prog, block_name );
+		
+		if ( block_index == GL_INVALID_INDEX ) {
+			printf( "Could not find uniform block %s\n", block_name );
+			return 0;
+		} else {
+			printf( "Uniform block index: %u\n", block_index );
+		}
+		
+		uniforms.glyph_positions_ub = block_index;
+		glUniformBlockBinding( the_prog, block_index, UBLOCK_BINDING );
+		*/
 	} else {
+		printf( "Not using UBO\n" );
 		uniforms.glyph_positions = glGetUniformLocation( the_prog, "glyph_positions" );
 	}
 	
@@ -321,6 +338,7 @@ static void draw_instances( Font *font, uint32 num_instances, uint32 glyph_index
 	}
 }
 
+#if ENABLE_COMPOSITE_GLYPHS
 static void pad_2x2_to_4x4( float out[16], float const in[4] )
 {
 	memset( out+2, 0, sizeof(float)*14 );
@@ -337,13 +355,15 @@ static void compute_subglyph_matrix( float out[16], float sg_mat[4], float sg_of
 	float b[16];
 	float c[16];
 	
+	/*
 	memcpy( out, transform, sizeof(float)*16 );
 	return;
+	*/
 	
 	pad_2x2_to_4x4( a, sg_mat );
 	mat4_translation( b, -sg_offset[0], -sg_offset[1], 0 );
-	mat4_mult( c, b, a );
-	mat4_mult( out, c, transform );
+	mat4_mult( c, a, b );
+	mat4_mult( out, transform, c );
 	
 	/*
 	memcpy( out, transform, sizeof(float)*16 );
@@ -384,6 +404,7 @@ static void draw_composite_glyph( Font *font, void *glyph, uint32 num_instances,
 		}
 	}
 }
+#endif
 
 static void draw_squares( Font *font, uint32 num_instances, int flags )
 {
@@ -400,6 +421,7 @@ void draw_glyphs( Font *font, float global_transform[16], uint32 glyph_index, ui
 	SimpleGlyph *glyph;
 	uint32 start, end, count;
 	GLuint ubo;
+	GLuint ub_index;
 	
 	if ( !num_instances )
 		return;
@@ -417,9 +439,26 @@ void draw_glyphs( Font *font, float global_transform[16], uint32 glyph_index, ui
 		end = end < BATCH_SIZE ? num_instances : BATCH_SIZE;
 	
 	if ( USE_UBO ) {
+		const GLchar *block_name = "GlyphPositions";
+		GLint ubo_size;
+		
+		ub_index = glGetUniformBlockIndex( the_prog, block_name );
+		if ( ub_index == GL_INVALID_INDEX ) {
+			printf( "Could not find uniform block %s\n", block_name );
+			exit( 1 );
+		}
+		
+		glUniformBlockBinding( the_prog, ub_index, UBLOCK_BINDING );
+		ubo_size = sizeof( float ) * 2 * BATCH_SIZE;
+		
+		if ( ubo_size > max_ubo_size ) {
+			printf( "Too big UBO; need %u but can have at most %u bytes\n", ubo_size, max_ubo_size );
+			return;
+		}
+		
 		glGenBuffers( 1, &ubo );
 		glBindBuffer( GL_UNIFORM_BUFFER, ubo );
-		glBufferData( GL_UNIFORM_BUFFER, sizeof(float)*2*num_instances, positions, GL_STATIC_DRAW );
+		glBufferData( GL_UNIFORM_BUFFER, ubo_size, NULL, GL_STREAM_DRAW );
 	}
 	
 	if ( IS_SIMPLE_GLYPH( glyph ) ) {
@@ -433,8 +472,8 @@ void draw_glyphs( Font *font, float global_transform[16], uint32 glyph_index, ui
 			count = end - start;
 			
 			if ( USE_UBO ) {
-				size_t k = 2 * sizeof( float );
-				glBindBufferRange( GL_UNIFORM_BUFFER, uniforms.glyph_positions_ub, ubo, start*k, count*k );
+				glBindBufferRange( GL_UNIFORM_BUFFER, ub_index, ubo, 0, sizeof( float ) * 2 * count );
+				glBufferSubData( GL_UNIFORM_BUFFER, 0, sizeof( float ) * 2 * count, positions + 2*start );
 			}
 			else
 				glUniform2fv( uniforms.glyph_positions, count, positions+2*start );
@@ -452,13 +491,13 @@ void draw_glyphs( Font *font, float global_transform[16], uint32 glyph_index, ui
 	else
 	{
 		/* Composite glyph. */
-		
+		#if ENABLE_COMPOSITE_GLYPHS
 		do {
 			count = end - start;
 			
 			if ( USE_UBO ) {
-				size_t k = 2 * sizeof( float );
-				glBindBufferRange( GL_UNIFORM_BUFFER, uniforms.glyph_positions_ub, ubo, start*k, count*k );
+				glBindBufferRange( GL_UNIFORM_BUFFER, ub_index, ubo, 0, sizeof( float ) * 2 * count );
+				glBufferSubData( GL_UNIFORM_BUFFER, 0, sizeof( float ) * 2 * count, positions + 2*start );
 			}
 			else
 				glUniform2fv( uniforms.glyph_positions, count, positions+2*start );
@@ -472,6 +511,7 @@ void draw_glyphs( Font *font, float global_transform[16], uint32 glyph_index, ui
 			end += BATCH_SIZE;
 			
 		} while( end <= num_instances );
+		#endif
 	}
 	
 	if ( USE_UBO ) {

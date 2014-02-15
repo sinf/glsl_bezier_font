@@ -617,6 +617,24 @@ int main( int argc, char *argv[] )
 					}
 					break;
 				
+				case SDL_MOUSEBUTTONDOWN:
+					{
+						float t = 0;
+						
+						if ( e.button.button == SDL_BUTTON_WHEELUP )
+							t = -1;
+						else if ( e.button.button == SDL_BUTTON_WHEELDOWN )
+							t = 1;
+						
+						if ( SDL_GetModState() & KMOD_CTRL )
+							t *= 0.1;
+						else
+							t *= 5;
+						
+						cam_y += t;
+					}
+					break;
+				
 				case SDL_QUIT:
 					quit();
 				
@@ -655,9 +673,10 @@ int main( int argc, char *argv[] )
 			
 			if ( SDL_GetModState() & KMOD_LSHIFT )
 				t *= 10;
-			else if ( SDL_GetModState() & KMOD_LCTRL )
+			else if ( SDL_GetModState() & KMOD_LCTRL ) {
+				r *= 0.05;
 				t *= 0.05;
-			else if ( SDL_GetModState() & KMOD_ALT )
+			} else if ( SDL_GetModState() & KMOD_ALT )
 				t *= 100;
 			
 			if ( keys[SDLK_a] ) tx -= t;

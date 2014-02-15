@@ -190,7 +190,7 @@ static void merge_extra_verts( Contour *co, PointCoord coords[], PointFlag flags
 			}
 			else
 			/* Delete redudant points */
-			if ( !( flags[nodes.d] & PT_ON_CURVE ) && ( flags[nodes.e] & PT_ON_CURVE ) && 0 )
+			if ( !( flags[nodes.d] & PT_ON_CURVE ) && ( flags[nodes.e] & PT_ON_CURVE ) && ENABLE_SUBDIV )
 			{
 				/* We have found a on-OFF-on-OFF-on sequence
 				If B,C,D are on the same side of line AE, then it is possible to remove B and D without changing the geometry
@@ -416,8 +416,6 @@ void *triangulator_begin( void )
 	
 	/* Registering an edge flag callback prevents GLU from outputting triangle fans and strips
 	(even if all the callback does is to compute the absolute value of it's argument)
-	Also,
-	see http://www.glprogramming.com/red/chapter11.html for winding rules and other GLU stuff
 	*/
 	
 	#if DEBUG_DUMP

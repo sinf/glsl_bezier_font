@@ -31,6 +31,7 @@ static int read_shorts( FILE *fp, uint16 x[], uint32 count )
 	return 0;
 }
 
+#if ENABLE_COMPOSITE_GLYPHS
 /* Used by read_glyph */
 static void *read_composite_glyph( FILE *fp, float units_per_em, Font font[1], FontStatus status[1] )
 {
@@ -168,6 +169,7 @@ error_handler:;
 		free( glyph_data );
 	return NULL;
 }
+#endif
 
 static int read_contour_coord( FILE *fp, PointFlag flags, int32 co[1] )
 {
@@ -352,8 +354,16 @@ static FontStatus read_glyph( FILE *fp, Font font[1], uint32 glyph_index, float 
 	
 	if ( header.num_contours >= 0x1000 )
 	{
+		#if ENABLE_COMPOSITE_GLYPHS
 		font->glyphs[ glyph_index ] = read_composite_glyph( fp, units_per_em, font, &status );
 		glyph_counts[1] += ( status == F_SUCCESS );
+		
+		if ( DEBUG_DUMP2 && font->glyphs[ glyph_index ] ) {
+			printf( "Glyph %u is a composite glyph. Has %u components\n", (uint) glyph_index, (uint) font->glyphs[ glyph_index ]->num_parts );
+		}
+		#else
+		status = F_SUCCESS;
+		#endif
 	}
 	else
 	{
@@ -610,13 +620,6 @@ FontStatus read_cmap( FILE *fp, Font *font )
 		
 		if ( fseek( fp, next_tabh_pos, SEEK_SET ) < 0 )
 			return F_FAIL_IMPOSSIBLE;
-		
-		/*
-		Platform/Encoding IDs:
-			http://www.microsoft.com/typography/otspec/name.htm
-		cmap formats:
-			https://developer.apple.com/fonts/ttrefman/rm06/Chap6cmap.html
-		*/
 	}
 	
 	return status;

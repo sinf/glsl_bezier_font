@@ -45,10 +45,13 @@ GlyphBatch *do_simple_layout( Font *font, uint32 *text, size_t text_len, size_t 
 	{
 		uint32 glyph;
 		int newline = 0;
+		float lsb, adv_x;
 		
 		glyph = get_cmap_entry( font, text[n] );
+		lsb = font->metrics_lsb[ glyph ];
+		adv_x = font->metrics_adv_x[ glyph ];
 		
-		chars[n].x = pos_x - font->metrics_lsb[glyph];
+		chars[n].x = pos_x - lsb;
 		chars[n].y = pos_y;
 		
 		if ( text[n] == '\n' ) {
@@ -63,7 +66,7 @@ GlyphBatch *do_simple_layout( Font *font, uint32 *text, size_t text_len, size_t 
 			pos_x = 0;
 			pos_y += line_height;
 		} else {
-			pos_x += font->metrics_adv_x[glyph];
+			pos_x += adv_x;
 			column++;
 		}
 		

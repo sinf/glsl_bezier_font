@@ -1,20 +1,21 @@
 #version 130
 #extension GL_ARB_explicit_attrib_location : require
 #extension GL_ARB_draw_instanced : require
-//#extension GL_ARB_uniform_buffer_object : require
 
-const int BATCH_SIZE = 2024; // was 2024
+#define BATCH_SIZE 2024
+
+#if 1
+uniform vec2 glyph_positions[BATCH_SIZE];
+#else
+#extension GL_ARB_uniform_buffer_object : require
+layout(std140) uniform GlyphPositions { vec2 glyph_positions[BATCH_SIZE]; };
+#endif
+
 const int FILL_CONVEX=0, FILL_CONCAVE=1, FILL_SOLID=2, SHOW_FLAGS=3;
 
 uniform int fill_mode = FILL_SOLID;
 uniform mat4 the_matrix;
 uniform vec4 the_color;
-
-#if 1
-uniform vec2 glyph_positions[BATCH_SIZE];
-#else
-layout(std140) uniform GlyphPositions { vec2 glyph_positions[BATCH_SIZE]; };
-#endif
 
 layout(location=0) in vec2 attr_pos;
 layout(location=1) in uint attr_flag;

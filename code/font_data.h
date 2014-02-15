@@ -48,6 +48,7 @@ typedef struct {
 
 #define IS_SIMPLE_GLYPH(glyph) ((glyph)->num_parts == 0)
 #define COMPOSITE_GLYPH_SIZE(num_parts) (( 4+(num_parts)*(4+6*sizeof(float)) ))
+#define ENABLE_COMPOSITE_GLYPHS 0
 
 typedef struct {
 	SimpleGlyph **glyphs; /* Array of pointers to CompositeGlyph and SimpleGlyph */

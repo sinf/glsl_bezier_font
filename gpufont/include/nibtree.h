@@ -5,8 +5,7 @@
 I call it a "nibble tree" because of the way it is searched.
 Intented to be used by font_file.c for character code to glyph index translation */
 
-/* at least 32 bits */
-typedef unsigned long NibValue;
+typedef unsigned NibValue;
 
 /* This structure must be zero-initialized before it can be used !! */
 typedef struct {

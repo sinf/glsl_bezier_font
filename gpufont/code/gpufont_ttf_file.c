@@ -17,7 +17,6 @@ typedef uint8_t uint8;
 typedef uint16_t uint16;
 typedef uint32_t uint32;
 typedef unsigned uint;
-typedef unsigned short ushort;
 
 enum {
 	DEBUG_DUMP = 1, /* enable/disable level 1 debug messages */
@@ -54,7 +53,7 @@ static void *read_composite_glyph( FILE *fp, float units_per_em, Font font[1], F
 	void *glyph_data = NULL; /* points to a CompositeGlyph, whose size is not yet known */
 	
 	/* num_subglyphs begins as zero because of calloc */
-	glyph_data = calloc( 1, 4 );
+	glyph_data = calloc( 1, sizeof(size_t) );
 	
 	if ( !glyph_data ) {
 		*status = F_FAIL_ALLOC;
@@ -64,8 +63,8 @@ static void *read_composite_glyph( FILE *fp, float units_per_em, Font font[1], F
 	do {
 		int16 args[2];
 		/* These pointers alias glyph_data */
-		uint32 *num_subglyphs;
-		uint32 *sg_indices;
+		size_t *num_subglyphs;
+		GlyphIndex *sg_indices;
 		float *sg_matrix;
 		float *sg_offset;
 		int16 fixed_matrix[4];
@@ -81,8 +80,8 @@ static void *read_composite_glyph( FILE *fp, float units_per_em, Font font[1], F
 		}
 		
 		num_subglyphs = glyph_data;
-		sg_indices = (uint32*) glyph_data + 1;
-		sg_matrix = (float*) glyph_data + 1 + *num_subglyphs + num * 6;
+		sg_indices = (GlyphIndex*)( num_subglyphs + 1 );
+		sg_matrix = (float*)( sg_indices + *num_subglyphs ) + num * 6;
 		sg_offset = sg_matrix + 4;
 		
 		if ( read_shorts( fp, &sgh.flags, 2 ) ) {
@@ -705,77 +704,49 @@ static TrError triangulate_all_glyphs( Font font[1] )
 	return triangulate_glyphs( font, 0, font->num_glyphs - 1 );
 }
 
-static FontStatus read_hmtx( FILE *fp, Font font[1], float units_per_em, size_t num_hmetrics )
+static FontStatus read_hmtx( FILE *fp, Font font[1], unsigned num_hmetrics )
 {
-	typedef struct {
-		uint16 adv_width;
-		int16 lsb;
-	} LongHorzMetric;
-	
-	LongHorzMetric *metrics = NULL;
-	float *glyph_adv_x = NULL;
-	float *glyph_lsb = NULL;
-	int16 *my_lsb = NULL;
-	size_t n;
+	LongHorzMetrics *hmetrics = NULL;
 	FontStatus status;
+	
+	int size_test[ sizeof(*hmetrics) == 4 ];
+	(void) size_test;
 	
 	if ( font->num_glyphs == 0 )
 		return F_SUCCESS;
 	
-	glyph_adv_x = malloc( font->num_glyphs * sizeof( *glyph_adv_x ) );
-	glyph_lsb = malloc( font->num_glyphs * sizeof( *glyph_lsb ) );
-	metrics = malloc( num_hmetrics * sizeof( *metrics ) );
-	status = F_FAIL_ALLOC;
-	
-	if ( !metrics || !glyph_lsb || !metrics )
-		goto error_handler;
+	hmetrics = malloc( font->num_glyphs * 4 );
+	if ( !hmetrics )
+		return F_FAIL_ALLOC;
 	
 	status = F_FAIL_EOF;
-	if ( read_shorts( fp, &metrics[0].adv_width, 2 * num_hmetrics ) )
+	if ( read_shorts( fp, &hmetrics[0].adv_width, 2 * num_hmetrics ) )
 		goto error_handler;
 	
-	for( n=0; n<num_hmetrics; n++ )
+	if ( num_hmetrics < font->num_glyphs )
 	{
-		glyph_adv_x[n] = metrics[n].adv_width / units_per_em;
-		glyph_lsb[n] = metrics[n].lsb / units_per_em;
-	}
-	
-	if ( n < font->num_glyphs )
-	{
-		float last_adv_x = glyph_adv_x[ n - 1 ];
-		size_t k=0, num_lsb;
+		uint16 last_adv_x = hmetrics[ num_hmetrics - 1 ].adv_width;
+		size_t n, num_lsb, end;
 		
 		num_lsb = font->num_glyphs - num_hmetrics;
-		my_lsb = malloc( num_lsb * 2 );
-		status = F_FAIL_ALLOC;
-		
-		if ( !my_lsb )
-			goto error_handler;
-		
+		end = num_hmetrics + num_lsb;
 		status = F_FAIL_EOF;
-		if ( read_shorts( fp, (uint16*) my_lsb, num_lsb ) )
-		{
-			free( my_lsb );
-			goto error_handler;
-		}
 		
-		do {
-			glyph_adv_x[n] = last_adv_x;
-			glyph_lsb[n] = my_lsb[k++] / units_per_em;
-		} while( ++n < font->num_glyphs );
+		for( n=num_hmetrics; n<end; n++ )
+		{
+			int16 lsb;
+			if ( fread( &lsb, 2, 1, fp ) != 1 )
+				goto error_handler;
+			hmetrics[n].adv_width = last_adv_x;
+			hmetrics[n].lsb = ntohs( lsb );
+		}
 	}
 	
-	/* Success! */
-	font->metrics_adv_x = glyph_adv_x;
-	font->metrics_lsb = glyph_lsb;
-	glyph_adv_x = glyph_lsb = NULL;
-	status = F_SUCCESS;
+	font->hmetrics = hmetrics;
+	return F_SUCCESS;
 	
 error_handler:;
-	if ( metrics ) free( metrics );
-	if ( glyph_adv_x ) free( glyph_adv_x );
-	if ( glyph_lsb ) free( glyph_lsb );
-	if ( my_lsb ) free( my_lsb );
+	free( hmetrics );
 	return status;
 }
 
@@ -805,9 +776,7 @@ static FontStatus read_offset_table( FILE *fp, Font font[1] )
 	MaxProTableOne maxp = {0};
 	HorzHeaderTable hhea = {0};
 	float units_per_em;
-	
 	int status;
-	TrError tr_status;
 	
 	if ( read_shorts( fp, &num_tables, 1 ) )
 		return F_FAIL_EOF;
@@ -885,7 +854,8 @@ static FontStatus read_offset_table( FILE *fp, Font font[1] )
 	}
 	
 	num_glyphs = ntohs( maxp.num_glyphs );
-	units_per_em = ntohs( head.units_per_em );
+	font->units_per_em = ntohs( head.units_per_em );
+	units_per_em = font->units_per_em;
 	
 	if ( DEBUG_DUMP )
 	{
@@ -896,13 +866,13 @@ static FontStatus read_offset_table( FILE *fp, Font font[1] )
 			"Tables: %hu\n"
 			"head / Flags: %08hx\n"
 			"head / Units per EM: %.0f\n"
-			"maxp 0.5 / Glyphs: %hu\n",
+			"maxp 0.5 / Glyphs: %u\n",
 			(uint) ntohl( head.version ),
 			(uint) ntohl( head.font_rev ),
-			(ushort) num_tables,
-			(ushort) ntohs( head.flags ),
+			(unsigned short) num_tables,
+			ntohs( head.flags ),
 			units_per_em,
-			(ushort) num_glyphs );
+			(uint) num_glyphs );
 		if ( maxp.version == htonl( 0x10000 ) )
 		{
 			printf(
@@ -910,10 +880,10 @@ static FontStatus read_offset_table( FILE *fp, Font font[1] )
 			"maxp 1.0 / Max points (simple glyph) %hu\n"
 			"maxp 1.0 / Max contours (simple glyph) %hu\n"
 			"maxp 1.0 / Max composite recursion %hu\n",
-			(ushort) ntohs( maxp.max_contours ),
-			(ushort) ntohs( maxp.max_points ),
-			(ushort) ntohs( maxp.max_contours ),
-			(ushort) ntohs( maxp.max_com_recursion ) );
+			ntohs( maxp.max_contours ),
+			ntohs( maxp.max_points ),
+			ntohs( maxp.max_contours ),
+			ntohs( maxp.max_com_recursion ) );
 		}
 	}
 	
@@ -927,14 +897,6 @@ static FontStatus read_offset_table( FILE *fp, Font font[1] )
 	status = read_all_glyphs( fp, font, head.index_to_loc_format, units_per_em, table_pos[TAB_GLYF] );
 	if ( status != F_SUCCESS )
 		return status;
-	
-	tr_status = triangulate_all_glyphs( font );
-	if ( tr_status != TR_SUCCESS )
-		return F_FAIL_TRIANGULATE;
-	
-	/* Merges contour points and indices into a contiguous block of memory */
-	if ( !merge_glyph_data( font ) )
-		return F_FAIL_ALLOC;
 	
 	/* Read table "cmap" */
 	if ( fseek( fp, table_pos[TAB_CMAP], SEEK_SET ) < 0 )
@@ -956,27 +918,14 @@ static FontStatus read_offset_table( FILE *fp, Font font[1] )
 	if ( hhea.metric_data_format )
 		return F_FAIL_UNSUP_VER;
 	
-	font->metrics.ascent = (int16) ntohs( hhea.ascender ) / units_per_em;
-	font->metrics.descent = (int16) ntohs( hhea.descender ) / units_per_em;
-	font->metrics.linegap = (int16) ntohs( hhea.linegap ) / units_per_em;
-	
-	if ( DEBUG_DUMP )
-	{
-		printf(
-		"    Ascender: %f\n"
-		"    Descender: %f\n"
-		"    Linegap: %f\n",
-		font->metrics.ascent,
-		font->metrics.descent,
-		font->metrics.linegap );
-		
-		printf( "Reading hmtx\n" );
-	}
+	font->horz_ascender = (int16) ntohs( hhea.ascender );
+	font->horz_descender = (int16) ntohs( hhea.descender );
+	font->horz_linegap = (int16) ntohs( hhea.linegap );
 	
 	/* Read horizontal metrics */
 	if ( fseek( fp, table_pos[TAB_HMTX], SEEK_SET ) < 0 )
 		return F_FAIL_CORRUPT;
-	status = read_hmtx( fp, font, units_per_em, ntohs( hhea.num_hmetrics ) );
+	status = read_hmtx( fp, font, ntohs( hhea.num_hmetrics ) );
 	if ( status != F_SUCCESS )
 		return status;
 	
@@ -1054,6 +1003,9 @@ FontStatus load_ttf_file( struct Font *font, const char filename[] )
 	if ( fread( &file_ident, 4, 1, fp ) != 1 ) {
 		status = F_FAIL_EOF;
 	} else {
+		extern uint32 SDL_GetTicks( void );
+		uint32 t = SDL_GetTicks();
+		
 		if ( file_ident == htonl( 0x10000 ) ) {
 			/* This is a TrueType font file (sfnt version 1.0)
 			todo: handle other identifiers ("true", "typ1", "OTTO") */
@@ -1064,6 +1016,19 @@ FontStatus load_ttf_file( struct Font *font, const char filename[] )
 		} else {
 			/* Unsupported file format */
 			status = F_FAIL_UNK_FILEF;
+		}
+		
+		if ( status == F_SUCCESS )
+		{
+			t = SDL_GetTicks() - t;
+			printf( "File I/O took %u milliseconds\n", (unsigned) t );
+			
+			if ( triangulate_all_glyphs( font ) != TR_SUCCESS )
+				status = F_FAIL_TRIANGULATE;
+			
+			/* Merges contour points, indices and glyph data into large contiguous blocks of memory */
+			if ( !merge_glyph_data( font ) )
+				status = F_FAIL_ALLOC;
 		}
 	}
 	

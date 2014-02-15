@@ -1,39 +1,38 @@
 #include <stdlib.h>
 #include <assert.h>
+#include <stdint.h>
+#include <ctype.h>
 #include "gpufont_data.h"
 #include "gpufont_draw.h"
 #include "gpufont_layout.h"
 
 typedef struct {
-	uint32_t glyph;
-	float x, y;
+	GlyphIndex glyph;
+	int32_t pos_x;
+	int32_t line_num;
 } TempChar;
 
-static void init_glyph_positions( Font font[1], TempChar chars[], uint32_t text[], size_t text_len, size_t max_line_len, float line_height_scale )
+static void init_glyph_positions( Font font[1], TempChar chars[], uint32_t const text[], size_t text_len, size_t max_line_len )
 {
-	float line_height = ( font->metrics.ascent - font->metrics.descent + font->metrics.linegap ) * line_height_scale;
-	float pos_x=0, pos_y=0;
-	size_t n, column=0;
+	int32_t pos_x = 0;
+	int32_t line = 0;
+	size_t n, column = 0;
 	
 	for( n=0; n<text_len; n++ )
 	{
-		uint32_t glyph;
-		float lsb, adv_x;
+		GlyphIndex glyph;
+		uint32_t cha = text[n];
 		
-		glyph = get_cmap_entry( font, text[n] );
-		lsb = font->metrics_lsb[ glyph ];
-		adv_x = font->metrics_adv_x[ glyph ];
+		chars[n].glyph = glyph = get_cmap_entry( font, cha );
+		chars[n].pos_x = pos_x - font->hmetrics[ glyph ].lsb;
+		chars[n].line_num = line;
 		
-		chars[n].glyph = glyph;
-		chars[n].x = pos_x - lsb;
-		chars[n].y = pos_y;
-		
-		if ( text[n] == '\n' || column == max_line_len ) {
+		if ( cha == '\n' || column == max_line_len ) {
 			column = 0;
 			pos_x = 0;
-			pos_y += line_height;
+			line += 1;
 		} else {
-			pos_x += adv_x;
+			pos_x += font->hmetrics[ glyph ].adv_width;
 			column++;
 		}
 	}
@@ -49,12 +48,14 @@ static int sort_func( const void *x, const void *y )
 	return 0;
 }
 
-GlyphBatch *do_simple_layout( struct Font *font, uint32_t *text, size_t text_len, size_t max_line_len, float line_height_scale )
+GlyphBatch *do_simple_layout( struct Font *font, uint32_t const *text, size_t text_len, size_t max_line_len, float line_height_scale )
 {
+	double em_conv = 1.0 / font->units_per_em;
+	double line_height = ( font->horz_ascender - font->horz_descender + font->horz_linegap ) * em_conv * line_height_scale;
 	TempChar *chars = NULL;
 	GlyphBatch *output = NULL;
 	size_t n, num_batches, cur_batch, cur_batch_len;
-	uint32_t prev_glyph;
+	GlyphIndex prev_glyph;
 	
 	output = malloc( text_len * sizeof(*output) );
 	if ( !output )
@@ -77,7 +78,7 @@ GlyphBatch *do_simple_layout( struct Font *font, uint32_t *text, size_t text_len
 		goto error_handler;
 	
 	/* Map character codes to glyph indices. Then compute x and y coordinates for each glyph */
-	init_glyph_positions( font, chars, text, text_len, max_line_len, line_height_scale );
+	init_glyph_positions( font, chars, text, text_len, max_line_len );
 	
 	/* Put same glyphs into the same batches */
 	qsort( chars, text_len, sizeof(*chars), sort_func );
@@ -108,8 +109,8 @@ GlyphBatch *do_simple_layout( struct Font *font, uint32_t *text, size_t text_len
 	for( n=0; n<text_len; n++ )
 	{
 		float *p = output->positions + 2 * n;
-		p[0] = chars[n].x;
-		p[1] = chars[n].y;
+		p[0] = chars[n].pos_x * em_conv;
+		p[1] = chars[n].line_num * line_height;
 		
 		if ( chars[n].glyph != prev_glyph )
 		{
@@ -141,16 +142,11 @@ void draw_glyph_batches( struct Font *font, GlyphBatch *layout, float global_tra
 {
 	float *pos = layout->positions;
 	size_t b, num_batches = layout->batch_count;
-	
 	for( b=0; b<num_batches; b++ )
 	{
-		size_t index, count;
-		
-		index = layout->glyph_indices[ b ];
-		count = layout->batch_len[ b ];
-		
+		GlyphIndex index = layout->glyph_indices[ b ];
+		size_t count = layout->batch_len[ b ];
 		draw_glyphs( font, global_transform, index, count, pos, draw_flags );
-		
 		pos += 2 * count;
 	}
 }

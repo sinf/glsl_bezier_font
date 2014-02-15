@@ -271,7 +271,7 @@ static void set_fill_mode( FillMode mode )
 }
 
 /* Draws only simple glyphs !! */
-static void draw_instances( Font *font, uint32 num_instances, uint32 glyph_index, int flags )
+static void draw_instances( Font *font, size_t num_instances, size_t glyph_index, int flags )
 {
 	SimpleGlyph *glyph = font->glyphs[ glyph_index ];
 	GLint first_vertex;
@@ -368,16 +368,16 @@ static void compute_subglyph_matrix( float out[16], float sg_mat[4], float sg_of
 	/* todo */
 }
 
-static void draw_composite_glyph( Font *font, void *glyph, uint32 num_instances, float global_transform[16], int flags )
+static void draw_composite_glyph( Font *font, void *glyph, size_t num_instances, float global_transform[16], int flags )
 {
-	uint32 p, num_parts = *(uint32*) glyph;
+	size_t num_parts = GET_SUBGLYPH_COUNT( glyph );
+	size_t p;
 	
 	for( p=0; p < num_parts; p++ )
 	{
-		uint32 subglyph_index = *( (uint32*) glyph + 1 + p );
+		GlyphIndex subglyph_index = GET_SUBGLYPH_INDEX( glyph, p );
 		SimpleGlyph *subglyph = font->glyphs[ subglyph_index ];
-		
-		float *matrix = (float*) glyph + 1 + num_parts + num_parts * 6;
+		float *matrix = GET_SUBGLYPH_TRANSFORM( glyph, p );
 		float *offset = matrix + 4;
 		float m[16];
 		
@@ -411,7 +411,7 @@ static void draw_squares( Font *font, size_t num_instances, int flags )
 	glBindVertexArray( font->gl_buffers[0] );
 }
 
-void draw_glyphs( struct Font *font, float global_transform[16], unsigned long glyph_index, size_t num_instances, float positions[], int flags )
+void draw_glyphs( struct Font *font, float global_transform[16], size_t glyph_index, size_t num_instances, float positions[], int flags )
 {
 	SimpleGlyph *glyph;
 	size_t start, end, count;

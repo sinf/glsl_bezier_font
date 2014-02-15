@@ -20,7 +20,7 @@ typedef struct {
 
 struct Font;
 
-GlyphBatch *do_simple_layout( struct Font *font, uint32_t *text, size_t text_len, size_t max_line_len, float line_height_scale );
+GlyphBatch *do_simple_layout( struct Font *font, uint32_t const *text, size_t text_len, size_t max_line_len, float line_height_scale );
 void draw_glyph_batches( struct Font *font, GlyphBatch *b, float global_transform[16], int draw_flags );
 void delete_layout( GlyphBatch *b );
 

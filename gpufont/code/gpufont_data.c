@@ -34,10 +34,8 @@ void destroy_font( Font *font )
 		}
 		free( font->glyphs );
 	}
-	if ( font->metrics_adv_x )
-		free( font->metrics_adv_x );
-	if ( font->metrics_lsb )
-		free( font->metrics_lsb );
+	if ( font->hmetrics )
+		free( font->hmetrics );
 	memset( font, 0, sizeof(*font) );
 }
 

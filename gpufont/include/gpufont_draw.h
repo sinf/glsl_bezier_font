@@ -37,7 +37,6 @@ enum {
 };
 
 typedef unsigned GLuint_; /* don't need bloated opengl header for just this one type */
-struct Font;
 
 int init_font_shader( GLuint_ linked_compiled_font_program );
 void deinit_font_shader( void ); /* deletes the program passed to init_font_shader */
@@ -50,6 +49,6 @@ void end_text( void );
 
 /* None of the arguments must be NULL
 (even though this function passes NULL to itself) */
-void draw_glyphs( struct Font *font, float global_transform[16], unsigned long glyph_index, size_t num_instances, float positions[], int flags );
+void draw_glyphs( struct Font *font, float global_transform[16], size_t glyph_index, size_t num_instances, float positions[], int flags );
 
 #endif

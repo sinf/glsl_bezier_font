@@ -76,7 +76,7 @@ static int lookup_test_char( Font *font, int32 cc )
 			gh->tris.num_indices_concave,
 			gh->tris.num_indices_solid );
 		} else {
-			printf( "- is a composite glyph\n- subglyphs: %u\n", gh->num_parts );
+			printf( "- is a composite glyph\n- subglyphs: %u\n", (uint) gh->num_parts );
 		}
 		return 1;
 	} else {
@@ -164,6 +164,19 @@ static int load_resources( void )
 	
 	printf( "Total points: %u\n", (unsigned) the_font.total_points );
 	printf( "Total indices: %u\n", (unsigned) the_font.total_indices );
+	
+	printf(
+	"Data types\n"
+	"sizeof(short) %d\n"
+	"sizeof(int) %d\n"
+	"sizeof(long) %d\n"
+	"sizeof(size_t) %d\n"
+	"sizeof(char) %d\n",
+	(int) sizeof(short),
+	(int) sizeof(int),
+	(int) sizeof(long),
+	(int) sizeof(size_t),
+	(int) sizeof(char) );
 	
 	if ( the_char_code )
 	{
@@ -406,6 +419,7 @@ static void help_screen_exit( void )
 	);
 	printf(
 	"\n---- Camera controls ----\n"
+	"Arrow keys rotate the camera\n"
 	"A,W,S,D move the camera\n"
 	"Mouse wheel moves the camera along Y axis\n"
 	"Holding LCTRL, SHIFT, or ALT multiply speed by factors 0.05, 10 and 100\n"

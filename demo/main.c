@@ -122,7 +122,7 @@ static GlyphBatch *load_text_file( Font *font, const char *filename )
 					printf(
 					"Success!\n"
 					"Characters in file: %ld\n"
-					"do_simple_layout gave us %u batches\n", len, (uint) layout->batch_count );
+					"do_simple_layout gave us %u batches\n", len, (uint)*(size_t*)layout );
 				}
 			}
 			free( text );
@@ -173,12 +173,15 @@ static int load_resources( void )
 	"sizeof(int) %d\n"
 	"sizeof(long) %d\n"
 	"sizeof(size_t) %d\n"
-	"sizeof(char) %d\n",
+	"sizeof(char) %d\n"
+	"sizeof(wchar_t) %d\n"
+	,
 	(int) sizeof(short),
 	(int) sizeof(int),
 	(int) sizeof(long),
 	(int) sizeof(size_t),
-	(int) sizeof(char) );
+	(int) sizeof(char),
+	(int) sizeof(wchar_t) );
 	
 	if ( the_char_code )
 	{

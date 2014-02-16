@@ -6,6 +6,13 @@
 #include "gpufont_draw.h"
 #include "gpufont_layout.h"
 
+struct GlyphBatch {
+	size_t batch_count; /* how many batches */
+	float *positions; /* glyph position array */
+	GlyphIndex *glyph_indices; /* one glyph index per batch */
+	size_t *batch_len; /* length of each batch */
+};
+
 typedef struct {
 	GlyphIndex glyph;
 	int32_t pos_x;
@@ -165,7 +172,7 @@ void draw_text_live( struct Font *font, uint32_t const *text, size_t text_len, i
 }
 
 static GlyphBatch THE_EMPTY_BATCH = {
-	NULL, NULL, NULL, 0
+	0, NULL, NULL, NULL
 };
 
 GlyphBatch *do_simple_layout( struct Font *font, uint32_t const *text, size_t text_len, int max_line_len, float line_height_scale )

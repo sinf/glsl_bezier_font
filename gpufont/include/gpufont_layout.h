@@ -2,7 +2,6 @@
 #define _FONT_LAYOUT_H
 #include <stddef.h>
 #include <stdint.h>
-#include "gpufont_data.h"
 
 /*
 Inputs:
@@ -12,14 +11,10 @@ Output:
 	Array of glyph index/position tuples
 */
 
-typedef struct {
-	float *positions; /* glyph position array */
-	GlyphIndex *glyph_indices; /* one glyph index per batch */
-	size_t *batch_len; /* length of each batch */
-	size_t batch_count; /* how many batches */
-} GlyphBatch;
-
 struct Font;
+
+struct GlyphBatch;
+typedef struct GlyphBatch GlyphBatch;
 
 /* if max_line_len < 0 then text is not wrapped at all */
 GlyphBatch *do_simple_layout( struct Font *font, uint32_t const *text, size_t text_len, int max_line_len, float line_height_scale );

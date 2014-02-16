@@ -638,9 +638,11 @@ static TrError triangulate_glyphs( Font font[1], size_t first_glyph, size_t last
 {
 	size_t n;
 	TrError err = TR_SUCCESS;
-	struct GLUtesselator *tess = triangulator_begin();
+	struct Triangulator *trg;
 	
-	if ( !tess )
+	trg = triangulator_begin();
+	
+	if ( !trg )
 		return TR_ALLOC_FAIL;
 	
 	if ( DEBUG_DUMP )
@@ -652,7 +654,7 @@ static TrError triangulate_glyphs( Font font[1], size_t first_glyph, size_t last
 		
 		if ( glyph && IS_SIMPLE_GLYPH( glyph ))
 		{
-			err = triangulate_contours( tess, &glyph->tris );
+			err = triangulate_contours( trg, &glyph->tris );
 			if ( err != TR_SUCCESS )
 			{
 				if ( DEBUG_DUMP )
@@ -666,7 +668,7 @@ static TrError triangulate_glyphs( Font font[1], size_t first_glyph, size_t last
 		}
 	}
 	
-	gluDeleteTess( tess );
+	triangulator_end( trg );
 	return err;
 }
 
@@ -904,9 +906,6 @@ static FontStatus read_offset_table( FILE *fp, Font font[1] )
 	status = read_cmap( fp, font );
 	if ( status != F_SUCCESS )
 		return status;
-	
-	if ( DEBUG_DUMP )
-		printf( "Reading hhea\n" );
 	
 	/* Read horizontal metrics header */
 	if ( fseek( fp, table_pos[TAB_HHEA], SEEK_SET ) < 0 )

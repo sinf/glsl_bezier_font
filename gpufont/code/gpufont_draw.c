@@ -29,14 +29,13 @@ static struct {
 } uniforms = {0};
 
 typedef enum {
-	FILL_CONVEX=0,
-	FILL_CONCAVE=1,
+	FILL_CURVE=0,
 	FILL_SOLID=2,
 	SHOW_FLAGS=3
 } FillMode;
 
 enum {
-	BATCH_SIZE = 2024, /* 1024 for chinese, 2024 for western??? */
+	BATCH_SIZE = 2024, /* used to be 2024 */
 	UBLOCK_BINDING = 0,
 	USE_UBO = 0
 };
@@ -122,19 +121,17 @@ void deinit_font_shader( void )
 	glDeleteProgram( the_prog );
 }
 
-static void add_glyph_stats( Font *font, SimpleGlyph *glyph, size_t counts[4], size_t limits[4] )
+static void add_glyph_stats( Font *font, SimpleGlyph *glyph, size_t counts[3], unsigned limits[3] )
 {
 	if ( !glyph )
 		return;
 	if ( IS_SIMPLE_GLYPH( glyph ) ) {
 		counts[0] += glyph->tris.num_points_total;
-		counts[1] += glyph->tris.num_indices_convex;
-		counts[2] += glyph->tris.num_indices_concave;
-		counts[3] += glyph->tris.num_indices_solid;
+		counts[1] += glyph->tris.num_indices_curve;
+		counts[2] += glyph->tris.num_indices_solid;
 		limits[0] = ( glyph->tris.num_points_total > limits[0] ) ? glyph->tris.num_points_total : limits[0];
-		limits[1] = ( glyph->tris.num_indices_convex > limits[1] ) ? glyph->tris.num_indices_convex : limits[1];
-		limits[2] = ( glyph->tris.num_indices_concave > limits[2] ) ? glyph->tris.num_indices_concave : limits[2];
-		limits[3] = ( glyph->tris.num_indices_solid > limits[3] ) ? glyph->tris.num_indices_solid : limits[3];
+		limits[1] = ( glyph->tris.num_indices_curve > limits[1] ) ? glyph->tris.num_indices_curve : limits[1];
+		limits[2] = ( glyph->tris.num_indices_solid > limits[2] ) ? glyph->tris.num_indices_solid : limits[2];
 	} else {
 		size_t k;
 		for( k=0; k < ( glyph->num_parts ); k++ )
@@ -145,10 +142,10 @@ static void add_glyph_stats( Font *font, SimpleGlyph *glyph, size_t counts[4], s
 	}
 }
 
-static void get_average_glyph_stats( Font *font, unsigned avg[4], size_t max[4] )
+static void get_average_glyph_stats( Font *font, unsigned avg[3], unsigned max[3] )
 {
-	size_t n, total[4] = {0,0,0,0};
-	max[0] = max[1] = max[2] = max[3] = 0;
+	size_t n, total[3] = {0,0,0};
+	max[0] = max[1] = max[2] = 0;
 	for( n=0; n<( font->num_glyphs ); n++ )
 		add_glyph_stats( font, font->glyphs[n], total, max );
 	for( n=0; n<4; n++ )
@@ -159,8 +156,7 @@ void prepare_font( Font *font )
 {
 	int size_check[ sizeof( font->gl_buffers[0] ) >= sizeof( GLuint ) ];
 	GLuint *buf = font->gl_buffers;
-	unsigned stats[4];
-	size_t limits[4];
+	unsigned stats[3], limits[3];
 	
 	(void) size_check;
 	
@@ -170,15 +166,13 @@ void prepare_font( Font *font )
 	"Uploading font to GL\n"
 	"Average glyph:\n"
 	"	Points: %u\n"
-	"	Indices: %u/%u/%u, total %u\n"
+	"	Indices: %u curved, %u solid\n"
 	"Maximum counts:\n"
 	"    Points: %u\n"
-	"    Indices: %u/%u/%u\n"
+	"    Indices: %u curved, %u solid\n"
 	,
-	stats[0], stats[1], stats[2], stats[3],
-	stats[1]+stats[2]+stats[3],
-	(unsigned) limits[0], (unsigned) limits[1], (unsigned) limits[2], (unsigned) limits[3]
-	);
+	stats[0], stats[1], stats[2],
+	limits[0], limits[1], limits[2] );
 	
 	glGenVertexArrays( 1, buf );
 	glGenBuffers( 3, buf+1 );
@@ -213,25 +207,11 @@ void release_font( Font *font )
 	glDeleteBuffers( 3, font->gl_buffers+1 );
 }
 
-/*
-void draw_text( ..... )
-{
-	1. upload global uniforms: color, transformation matrix
-	2. break glyphs into components
-	3. sort glyph components by index
-	4. for each unique component type:
-		bind relevant data
-		upload array of component positions
-		set uniform fill_mode = FILL_CONVEX
-		draw convex curves (glDrawArraysInstancedARB)
-		set uniform fill_mode = FILL_CONCAVE
-		draw concave curves
-		set uniform fill mode = FILL_SOLID
-		draw solid triangles
+void set_text_color( float c[4] ) {
+	glUniform4fv( uniforms.the_color, 1, c );
 }
-*/
 
-static void set_color( int c )
+static void debug_color( int c )
 {
 	float colors[][4] = {
 		{1,1,1,1},
@@ -247,7 +227,7 @@ static void set_color( int c )
 void begin_text( Font *font )
 {
 	glUseProgram( the_prog );
-	set_color( 0 );
+	debug_color( 0 );
 	glBindVertexArray( font->gl_buffers[0] );
 }
 
@@ -275,49 +255,39 @@ static void draw_instances( Font *font, size_t num_instances, size_t glyph_index
 {
 	SimpleGlyph *glyph = font->glyphs[ glyph_index ];
 	GLint first_vertex;
-	FillMode solid=FILL_SOLID, convex=FILL_CONVEX, concave=FILL_CONCAVE, show_flags=SHOW_FLAGS;
+	FillMode fill_curve=FILL_CURVE, show_flags=SHOW_FLAGS;
 	
 	if ( glyph->tris.num_points_total == 0 )
 		return;
 	
 	if ( flags & F_ALL_SOLID )
-		convex = concave = show_flags = FILL_SOLID;
+		fill_curve = show_flags = FILL_SOLID;
 	
 	/* divided by 2 because each point has both X and Y coordinate */
 	first_vertex = ( glyph->tris.points - font->all_points ) / 2;
 	
 	if ( flags & F_DRAW_TRIS )
 	{
-		uint16 n_convex, n_concave, n_solid;
+		uint16 n_curve, n_solid;
 		uint16 *offset;
 		GLenum index_type = GL_UINT_TYPE( PointIndex );
 		
 		offset = (uint16*) ( sizeof( font->all_indices[0] ) * ( glyph->tris.indices - font->all_indices ) );
 		
-		n_convex = glyph->tris.num_indices_convex;
-		n_concave = glyph->tris.num_indices_concave;
+		n_curve = glyph->tris.num_indices_curve;
 		n_solid = glyph->tris.num_indices_solid;
 		
-		if ( ( flags & F_DEBUG_COLORS ) == 0 )
-			set_color( 0 );
-		
-		if ( ( flags & F_DRAW_CONVEX ) && n_convex ) {
+		if ( ( flags & F_DRAW_CURVE ) && n_curve ) {
 			if ( flags & F_DEBUG_COLORS )
-				set_color( 1 );
-			set_fill_mode( convex );
-			glDrawElementsInstancedBaseVertex( GL_TRIANGLES, n_convex, index_type, offset, num_instances, first_vertex );
-		}
-		if ( ( flags & F_DRAW_CONCAVE ) && n_concave ) {
-			if ( flags & F_DEBUG_COLORS )
-				set_color( 2 );
-			set_fill_mode( concave );
-			glDrawElementsInstancedBaseVertex( GL_TRIANGLES, n_concave, index_type, offset+n_convex, num_instances, first_vertex );
+				debug_color( 1 );
+			set_fill_mode( fill_curve );
+			glDrawElementsInstancedBaseVertex( GL_TRIANGLES, n_curve, index_type, offset, num_instances, first_vertex );
 		}
 		if ( ( flags & F_DRAW_SOLID ) && n_solid ) {
 			if ( flags & F_DEBUG_COLORS )
-				set_color( 4 );
-			set_fill_mode( solid );
-			glDrawElementsInstancedBaseVertex( GL_TRIANGLES, n_solid, index_type, offset+n_convex+n_concave, num_instances, first_vertex );
+				debug_color( 4 );
+			set_fill_mode( FILL_SOLID );
+			glDrawElementsInstancedBaseVertex( GL_TRIANGLES, n_solid, index_type, offset+n_curve, num_instances, first_vertex );
 		}
 	}
 	
@@ -325,9 +295,9 @@ static void draw_instances( Font *font, size_t num_instances, size_t glyph_index
 	{
 		if ( flags & F_DEBUG_COLORS ) {
 			set_fill_mode( show_flags );
+			/* this fill mode causes colors to be generated out of nowhere */
 		} else {
-			set_fill_mode( solid );
-			set_color( 0 );
+			set_fill_mode( FILL_SOLID );
 		}
 		glDrawArraysInstancedARB( GL_POINTS, first_vertex, glyph->tris.num_points_total, num_instances );
 	}
@@ -401,22 +371,13 @@ static void draw_composite_glyph( Font *font, void *glyph, size_t num_instances,
 }
 #endif
 
-static void draw_squares( Font *font, size_t num_instances, int flags )
-{
-	if ( flags & F_DEBUG_COLORS )
-		set_color( 2 );
-	set_fill_mode( FILL_SOLID );
-	glBindVertexArray( em_sq_vao );
-	glDrawArraysInstancedARB( GL_LINE_LOOP, 0, 4, num_instances );
-	glBindVertexArray( font->gl_buffers[0] );
-}
-
 void draw_glyphs( struct Font *font, float global_transform[16], size_t glyph_index, size_t num_instances, float positions[], int flags )
 {
 	SimpleGlyph *glyph;
 	size_t start, end, count;
 	GLuint ubo;
 	GLuint ub_index;
+	int is_simple;
 	
 	if ( !num_instances )
 		return;
@@ -456,58 +417,43 @@ void draw_glyphs( struct Font *font, float global_transform[16], size_t glyph_in
 		glBufferData( GL_UNIFORM_BUFFER, ubo_size, NULL, GL_STREAM_DRAW );
 	}
 	
-	if ( IS_SIMPLE_GLYPH( glyph ) ) {
+	is_simple = IS_SIMPLE_GLYPH( glyph );
+	if ( is_simple ) {
 		/* The glyph consists of only one part
 		and every batch draws many instances of that same part.
 		Therefore every batch shares the same matrix */
-		
 		send_matrix( global_transform );
+	}
+	
+	do {
+		count = end - start;
 		
-		do {
-			count = end - start;
-			
-			if ( USE_UBO ) {
-				glBindBufferRange( GL_UNIFORM_BUFFER, ub_index, ubo, 0, sizeof( float ) * 2 * count );
-				glBufferSubData( GL_UNIFORM_BUFFER, 0, sizeof( float ) * 2 * count, positions + 2*start );
-			}
-			else
-				glUniform2fv( uniforms.glyph_positions, count, positions+2*start );
-			
+		if ( USE_UBO ) {
+			glBindBufferRange( GL_UNIFORM_BUFFER, ub_index, ubo, 0, sizeof( float ) * 2 * count );
+			glBufferSubData( GL_UNIFORM_BUFFER, 0, sizeof( float ) * 2 * count, positions + 2*start );
+		} else {
+			glUniform2fv( uniforms.glyph_positions, count, positions+2*start );
+		}
+		
+		if ( is_simple )
 			draw_instances( font, count, glyph_index, flags );
-			
-			if ( flags & F_DRAW_SQUARE )
-				draw_squares( font, count, flags );
-			
-			start = end;
-			end += BATCH_SIZE;
-			
-		} while( end <= num_instances );
-	}
-	else
-	{
-		/* Composite glyph. */
 		#if ENABLE_COMPOSITE_GLYPHS
-		do {
-			count = end - start;
-			
-			if ( USE_UBO ) {
-				glBindBufferRange( GL_UNIFORM_BUFFER, ub_index, ubo, 0, sizeof( float ) * 2 * count );
-				glBufferSubData( GL_UNIFORM_BUFFER, 0, sizeof( float ) * 2 * count, positions + 2*start );
-			}
-			else
-				glUniform2fv( uniforms.glyph_positions, count, positions+2*start );
-			
+		else
 			draw_composite_glyph( font, glyph, count, global_transform, flags );
-			
-			if ( flags & F_DRAW_SQUARE )
-				draw_squares( font, count, flags );
-			
-			start = end;
-			end += BATCH_SIZE;
-			
-		} while( end <= num_instances );
 		#endif
-	}
+		
+		if ( flags & F_DRAW_SQUARE ) {
+			if ( flags & F_DEBUG_COLORS ) debug_color( 2 );
+			set_fill_mode( FILL_SOLID );
+			glBindVertexArray( em_sq_vao );
+			glDrawArraysInstancedARB( ( flags & F_ALL_SOLID ) ? GL_TRIANGLE_STRIP : GL_LINE_LOOP, 0, 4, num_instances );
+			glBindVertexArray( font->gl_buffers[0] );
+		}
+		
+		start = end;
+		end += BATCH_SIZE;
+		
+	} while( end <= num_instances );
 	
 	if ( USE_UBO ) {
 		glBindBuffer( GL_UNIFORM_BUFFER, 0 );

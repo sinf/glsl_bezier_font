@@ -389,13 +389,28 @@ static void glu_error_handler( GLenum code )
 }
 #endif
 
-GLUtesselator *triangulator_begin( void )
+struct Triangulator {
+	GLUtesselator *tess;
+	GLdouble glu_coords[MAX_GLYPH_TRI_INDICES+1][2];
+};
+
+struct Triangulator *triangulator_begin( void )
 {
-	GLUtesselator *handle;
+	GLUtesselator *handle = NULL;
+	struct Triangulator *trgu;
+	
+	/* trgu->glu_coords needs to be zero-initialized (otherwise GLU goes use uninitialized z coordinates)
+	hence the need for calloc */
+	
+	trgu = calloc( 1, sizeof(*trgu) );
+	if ( !trgu )
+		return NULL;
 	
 	handle = gluNewTess();
-	if ( !handle )
+	if ( !handle ) {
+		free( trgu );
 		return NULL;
+	}
 	
 	/* Registering an edge flag callback prevents GLU from outputting triangle fans and strips
 	(even if all the callback does is to compute the absolute value of it's argument)
@@ -411,21 +426,29 @@ GLUtesselator *triangulator_begin( void )
 	gluTessProperty( handle, GLU_TESS_BOUNDARY_ONLY, GL_FALSE );
 	gluTessProperty( handle, GLU_TESS_WINDING_RULE, GLU_TESS_WINDING_NONZERO );
 	gluTessNormal( handle, 0, 0, 1 );
-	return handle;
+	
+	trgu->tess = handle;
+	return trgu;
 }
 
-TrError triangulate_contours( struct GLUtesselator *handle, struct GlyphTriangles *gt )
+void triangulator_end( struct Triangulator *trgu )
+{
+	assert( trgu );
+	assert( trgu->tess );
+	gluDeleteTess( trgu->tess );
+	free( trgu );
+}
+
+TrError triangulate_contours( struct Triangulator *trgu, struct GlyphTriangles *gt )
 {
 	uint16 num_contours = gt->num_contours;
 	PointFlag *point_flags = gt->flags;
 	float *point_coords = gt->points;
 	uint16 *end_points = gt->end_points;
 	
-	size_t num_tris[3] = {0,0,0};
-	PointIndex *convex_tris;
-	PointIndex concave_tris[MAX_GLYPH_TRI_INDICES];
-	PointIndex solid_tris[MAX_GLYPH_TRI_INDICES];
-	PointIndex *triangles[3]; /* triangle indices: 1. convex 2. concave 3. solid */
+	size_t num_tris_curve = 0;
+	size_t num_tris_solid = 0;
+	PointIndex *tri_indices = NULL;
 	
 	LLNode node_pool[MAX_GLYPH_POINTS];
 	Contour con[MAX_GLYPH_CONTOURS];
@@ -501,100 +524,108 @@ TrError triangulate_contours( struct GLUtesselator *handle, struct GlyphTriangle
 		start = end + 1;
 	}
 	
-	convex_tris = malloc( MAX_GLYPH_TRI_INDICES * sizeof( convex_tris[0] ) );
-	if ( !convex_tris )
+	tri_indices = malloc( MAX_GLYPH_TRI_INDICES * sizeof( PointIndex ) );
+	if ( !tri_indices )
 		return TR_ALLOC_FAIL;
 	
-	triangles[0] = convex_tris;
-	triangles[1] = concave_tris;
-	triangles[2] = solid_tris;
+	/*
+	Determine, which triangles represent curves, and whether they are convex or concave curves.
+	Write indices of the triangles
+	Set convex and texture coordinate bits
+	*/
+	for( c=0; c<num_contours; c++ )
+	{
+		LLNodeID node, next, prev;
+		LLNodeID dummy, root;
+		PointFlag vertex_id_bit = 2;
+		
+		if ( con[c].points.length < 3 )
+			continue;
+		
+		root = con[c].points.root;
+		if ( ( dummy = add_node( &con[c].points, root ) ) != LL_BAD_INDEX )
+		{
+			/* 2 on-curve points on both sides of an off-curve point might sometimes get the same ID bit.
+			Then the on-curve points would have the same texture coordinates and the curve would render incorrectly
+			This can be solved by duplicating the last point */
+			point_flags[dummy] = point_flags[root];
+			point_coords[ 2 * dummy ] = point_coords[ 2 * root ];
+			point_coords[ 2 * dummy + 1 ] = point_coords[ 2 * root + 1 ];
+		}
+		
+		node = root;
+		do {
+			next = LL_NEXT( con[c].points, node );
+			
+			/* Get the highest node index in use */
+			if ( node+1 > gt->num_points_total )
+				gt->num_points_total = node+1;
+			
+			if ( !( point_flags[ node ] & PT_ON_CURVE ) )
+			{
+				/* Off-curve point */
+				int is_clockwise;
+				int is_convex;
+				size_t t;
+				
+				prev = LL_PREV( con[c].points, node );
+				is_clockwise = ac_cross_ab( point_coords + 2 * prev, point_coords + 2 * node, point_coords + 2 * next ) > 0;
+				is_convex = ( is_clockwise == con[c].clockwise ) ^ con[c].is_hole;
+				t = 3 * num_tris_curve;
+				
+				if ( t < MAX_GLYPH_TRI_INDICES - 3 )
+				{
+					/* add a triangle */
+					
+					tri_indices[ t + is_convex ] = next;
+					tri_indices[ t + !is_convex ] = prev;
+					tri_indices[ t + 2 ] = node;
+					
+					/* point_flags[ node ] = 0; should already be zero */
+					point_flags[ prev ] = vertex_id_bit | PT_ON_CURVE;
+					point_flags[ next ] = ( vertex_id_bit = vertex_id_bit ^ 2 ) | PT_ON_CURVE;
+					point_flags[ node ] = is_convex << 2; /* the provoking vertex gets the convex bit (GL default is last) */
+					
+					num_tris_curve += 1;
+				}
+			}
+			
+			node = next;
+		} while( node != root );
+	}
 	
 	/* Triangulate */
 	if ( 1 )
 	{
-		/* needs to be zero-initialized because otherwise GLU goes use uninitialized values (z coordinates) */
-		GLdouble glu_coords[MAX_GLYPH_TRI_INDICES+1][2] = {{0,0}};
-		
 		MyGLUCallbackArg arg;
 		
 		arg.coords = point_coords;
 		arg.flags = point_flags;
 		arg.newpts = &new_points_list;
-		arg.num = num_tris[2] * 3;
-		arg.ptr = triangles[2];
+		arg.num = num_tris_curve * 3;
+		arg.ptr = tri_indices;
 		arg.num_points_total = &gt->num_points_total;
 		
-		gluTessBeginPolygon( handle, &arg );
+		gluTessBeginPolygon( trgu->tess, &arg );
 		
 		for( c=0; c<num_contours; c++ )
 		{
-			LLNodeID node, next, prev;
-			PointFlag vertex_id_bit = 2;
+			LLNodeID node, next;
 			
 			if ( con[c].points.length < 3 )
 				continue;
 			
-			/*
-			todo:
-			fix this: sometimes start and end points end up with the same vertex ID bit, causing a nearby curve to be rendered incorrectly
-			*/
-			
-			if ( 1 )
-			{
-				/* 2 on-curve points on both sides of an off-curve point might sometimes get the same ID bit.
-				Then the on-curve points would have the same texture coordinates and the curve would render incorrectly
-				This can be solved by duplicating a point */
-				
-				LLNodeID dummy, root;
-				
-				root = con[c].points.root;
-				dummy = add_node( &con[c].points, root );
-				
-				if ( dummy != LL_BAD_INDEX ) {
-					point_flags[dummy] = point_flags[root];
-					point_coords[ 2 * dummy ] = point_coords[ 2 * root ];
-					point_coords[ 2 * dummy + 1 ] = point_coords[ 2 * root + 1 ];
-				}
-			}
-			
-			gluTessBeginContour( handle );
+			gluTessBeginContour( trgu->tess );
 			node = con[c].points.root;
-			
 			do {
 				int must_add = 1;
 				
 				next = LL_NEXT( con[c].points, node );
 				
-				/* Get the highest node index in use */
-				if ( node+1 > gt->num_points_total )
-					gt->num_points_total = node+1;
-				
 				if ( !( point_flags[ node ] & PT_ON_CURVE ) )
 				{
-					/* Off-curve point */
-					int is_clockwise;
-					int is_concave;
-					size_t t;
-					
-					prev = LL_PREV( con[c].points, node );
-					is_clockwise = ac_cross_ab( point_coords + 2 * prev, point_coords + 2 * node, point_coords + 2 * next ) > 0;
-					is_concave = ( is_clockwise != con[c].clockwise ) ^ con[c].is_hole;
-					must_add &= is_concave;
-					t = num_tris[ is_concave ] * 3;
-					
-					if ( t < MAX_GLYPH_TRI_INDICES - 3 )
-					{	
-						/* add a triangle */
-						
-						num_tris[ is_concave ] += 1;
-						triangles[ is_concave ][ t ] = node;
-						triangles[ is_concave ][ t + 1 + !is_concave ] = next;
-						triangles[ is_concave ][ t + 1 + is_concave ] = prev;
-						
-						point_flags[ prev ] = vertex_id_bit | PT_ON_CURVE;
-						point_flags[ next ] = ( vertex_id_bit = vertex_id_bit ^ 2 ) | PT_ON_CURVE;
-						/* point_flags[ node ] = 0; should already be zero */
-					}
+					/* Must not add those off-curve points that are outside the interior polygon */
+					must_add ^= ( point_flags[ node ] >> 2 );
 				}
 				
 				if ( must_add )
@@ -602,49 +633,45 @@ TrError triangulate_contours( struct GLUtesselator *handle, struct GlyphTriangle
 					int test[ sizeof(void*) == sizeof(size_t) ];
 					(void) test;
 					
-					glu_coords[node][0] = point_coords[ 2*node ];
-					glu_coords[node][1] = point_coords[ 2*node+1 ];
-					/* glu_coords[node][2] = 0; Using the X coordinate of the next vertex as a Z coordinate seems to work just fine */
+					trgu->glu_coords[node][0] = point_coords[ 2*node ];
+					trgu->glu_coords[node][1] = point_coords[ 2*node+1 ];
+					/* glu_coords[node][2] = 0;
+					Using the X coordinate of the next vertex as a Z coordinate seems to work just fine
+					(even though it might be garbage) */
 					
-					gluTessVertex( handle, glu_coords[node], (void*)(size_t) node );
+					gluTessVertex( trgu->tess, trgu->glu_coords[node], (void*)(size_t) node );
 				}
 				
 				node = next;
 			} while( node != con[c].points.root );
 			
-			gluTessEndContour( handle );
+			gluTessEndContour( trgu->tess );
 		}
 		
-		gluTessEndPolygon( handle );
-		
-		num_tris[2] = arg.num / 3;
+		gluTessEndPolygon( trgu->tess );
+		num_tris_solid = arg.num / 3 - num_tris_curve;
 		/** gt->num_points_total += new_points_list.length; **/
 	}
 	
-	gt->num_indices_total = 3 * ( num_tris[0] + num_tris[1] + num_tris[2] );
-	gt->num_indices_convex = 3 * num_tris[0];
-	gt->num_indices_concave = 3 * num_tris[1];
-	gt->num_indices_solid = 3 * num_tris[2];
-	gt->indices = NULL;
+	gt->num_indices_total = 3 * num_tris_curve + 3 * num_tris_solid;
+	gt->num_indices_curve = 3 * num_tris_curve;
+	gt->num_indices_solid = 3 * num_tris_solid;
 	
 	if ( gt->num_indices_total > 0 )
 	{
-		gt->indices = realloc( triangles[0], sizeof( PointIndex ) * gt->num_indices_total );
+		gt->indices = realloc( tri_indices, sizeof( PointIndex ) * gt->num_indices_total );
 		
 		if ( !gt->indices )
 		{
-			free( triangles[0] );
+			free( tri_indices );
 			return TR_ALLOC_FAIL;
 		}
-		
-		memcpy(
-			gt->indices + 3 * num_tris[0],
-			triangles[1],
-			3 * num_tris[1] * sizeof( PointIndex ) );
-		memcpy(
-			gt->indices + 3 * ( num_tris[0] + num_tris[1] ),
-			triangles[2],
-			3 * num_tris[2] * sizeof( PointIndex ) );
+	}
+	else
+	{
+		/* didn't need indices at all */
+		gt->indices = NULL;
+		free( tri_indices );
 	}
 	
 	return TR_SUCCESS;

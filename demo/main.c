@@ -3,10 +3,12 @@
 #include <math.h>
 #include <assert.h>
 #include <SDL.h>
+#include <wchar.h>
 #include "opengl.h"
 #include "shaders.h"
 #include "matrix.h"
 #include "types.h"
+#include "microsec.h"
 
 #include "gpufont_data.h"
 #include "gpufont_ttf_file.h"
@@ -67,14 +69,14 @@ static int lookup_test_char( Font *font, int32 cc )
 			printf(
 			"- is a simple glyph\n"
 			"- total points: %hu\n"
-			"- indices/convex: %hu\n"
-			"- indices/concave: %hu\n"
+			"- indices/curve: %hu\n"
 			"- indices/solid: %hu\n"
+			"- indices/total: %hu\n"
 			,
 			gh->tris.num_points_total,
-			gh->tris.num_indices_convex,
-			gh->tris.num_indices_concave,
-			gh->tris.num_indices_solid );
+			gh->tris.num_indices_curve,
+			gh->tris.num_indices_solid,
+			gh->tris.num_indices_total );
 		} else {
 			printf( "- is a composite glyph\n- subglyphs: %u\n", (uint) gh->num_parts );
 		}
@@ -261,9 +263,36 @@ static size_t generate_grid_floor( GLuint vao, GLuint vbo, size_t horz_lines, si
 	return num_verts;
 }
 
+/* supposed to be in main() or anywhere else but here */
+static float cam_x=0, cam_y=-2, cam_z=1.82;
+static float cam_yaw=PI, cam_pitch=PI;
+static int win_w = 800;
+static int win_h = 600;
+
+static void get_micros_per_frame( unsigned long avg_time[1], unsigned long delta_time )
+{
+	/* how many frames to average */
+	enum { SAMPLES = 20 };
+	static unsigned long accum_frames=0, accum_time=0;
+	
+	accum_time += delta_time;
+	accum_frames++;
+	
+	if ( accum_frames == SAMPLES ) {
+		avg_time[0] = accum_time / accum_frames;
+		accum_frames = 0;
+		accum_time = 0;
+	}
+}
+
 static void repaint( void )
 {
+	static float c_white[4] = {1,1,1,1};
+	static float c_green[4] = {0,1,0,1};
 	int glyph_draw_flags = 0;
+	
+	static uint64_t avg_frame_micros = 0;
+	unsigned long frame_start_time = get_microsec();
 	
 	switch( wire_mode )
 	{
@@ -315,6 +344,8 @@ static void repaint( void )
 	
 	glEnable( GL_BLEND );
 	glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
+	glEnable( GL_ALPHA_TEST );
+	glAlphaFunc( GL_GREATER, 0.00001 );
 	
 	begin_text( &the_font );
 	
@@ -323,6 +354,7 @@ static void repaint( void )
 		uint32 g = the_glyph_index;
 		
 		/* draw a huge array of the same glyph */
+		set_text_color( c_white );
 		draw_glyphs( &the_font, mvp, g,
 			GLYPH_ARRAY_S*GLYPH_ARRAY_S,
 			&the_glyph_coords[0][0][0],
@@ -333,6 +365,7 @@ static void repaint( void )
 			glDisable( GL_DEPTH_TEST );
 			glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
 			
+			set_text_color( c_white );
 			draw_glyphs( &the_font, mvp, g,
 				GLYPH_ARRAY_S*GLYPH_ARRAY_S,
 				&the_glyph_coords[0][0][0],
@@ -346,15 +379,45 @@ static void repaint( void )
 	{
 		/* Show a text file */
 		
+		set_text_color( c_white );
 		draw_glyph_batches( &the_font, my_layout, mvp, glyph_draw_flags );
 		
 		if ( wire_mode == 1 )
 		{
 			glDisable( GL_DEPTH_TEST );
 			glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
+			set_text_color( c_white );
 			draw_glyph_batches( &the_font, my_layout, mvp, F_DRAW_TRIS | F_ALL_SOLID );
 			glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
 			glEnable( GL_DEPTH_TEST );
+		}
+	}
+	
+	/* Draw a line of text that changes in real time */
+	if ( sizeof( wchar_t ) == 4 )
+	{
+		wchar_t s[300];
+		int len;
+		
+		len = swprintf( s, sizeof( s ) / sizeof( s[0] ),
+			L"  Pos (%.3f, %.3f, %.3f) Yaw %.3f Pitch %.3f\nAverage frame time: %lu µs (%.1lf fps)",
+			cam_x, cam_y, cam_z, cam_yaw, cam_pitch, avg_frame_micros, 1000000.0 / avg_frame_micros );
+		
+		if ( len > 0 )
+		{
+			float scale = 50;
+			float matrix[16];
+			
+			memcpy( matrix, &MAT4_IDENTITY, sizeof(matrix) );
+			
+			matrix[0] = scale / win_w;
+			if ( 1 ) matrix[4] = matrix[0] * 0.5; /* makes the line slightly skewed */
+			matrix[5] = scale / win_h;
+			matrix[12] = -0.99;
+			matrix[13] = -0.95;
+			
+			set_text_color( c_green );
+			draw_text_live( &the_font, (uint32_t*) s, len, -1, 1, matrix, F_DRAW_TRIS );
 		}
 	}
 	
@@ -365,11 +428,15 @@ static void repaint( void )
 	glDisable( GL_POLYGON_OFFSET_LINE );
 	glDisable( GL_POLYGON_OFFSET_POINT );
 	glDisable( GL_BLEND );
+	glDisable( GL_ALPHA_TEST );
 	glDisable( GL_POLYGON_SMOOTH );
 	glDisable( GL_LINE_SMOOTH );
 	
 	if ( cull_mode != CULL_OFF )
 		glDisable( GL_CULL_FACE );
+	
+	glFinish();
+	get_micros_per_frame( &avg_frame_micros, get_microsec() - frame_start_time );
 }
 
 static void update_viewport( int w, int h )
@@ -424,7 +491,6 @@ static void help_screen_exit( void )
 	"Mouse wheel moves the camera along Y axis\n"
 	"Holding LCTRL, SHIFT, or ALT multiply speed by factors 0.05, 10 and 100\n"
 	"T: Save camera position to camera.dat\n"
-	"J: Print camera position\n"
 	"M: Toggle wireframe modes (off,lines,points)\n"
 	"N: Toggle back face fulling (off,cw,ccw)\n"
 	"\n"
@@ -458,11 +524,7 @@ static void parse_args( int argc, char **argv )
 int main( int argc, char *argv[] )
 {
 	const Uint32 video_flags = SDL_OPENGL | SDL_RESIZABLE | SDL_NOFRAME;
-	float cam_x=0, cam_y=-2, cam_z=1.82;
-	float cam_yaw=PI, cam_pitch=PI;
 	FILE *cam_fp;
-	int win_w = 800;
-	int win_h = 600;
 	Uint32 prev_ticks;
 	int msaa_enabled = 1;
 	int msaa_samples = 8;
@@ -564,9 +626,6 @@ int main( int argc, char *argv[] )
 				case SDL_KEYDOWN:
 					switch( e.key.keysym.sym )
 					{
-						case SDLK_j:
-							printf( "%.4f %.4f %.4f | %.4f %.4f\n", cam_x, cam_y, cam_z, cam_yaw, cam_pitch );
-							break;
 						case SDLK_n:
 							printf( "Cull mode: %s\n",
 								( cull_mode = ( cull_mode + 1 ) % 3 )
@@ -672,6 +731,9 @@ int main( int argc, char *argv[] )
 			if ( keys[SDLK_RIGHT] ) cam_yaw += r;
 			if ( keys[SDLK_UP] ) cam_pitch -= r;
 			if ( keys[SDLK_DOWN] ) cam_pitch += r;
+			
+			cam_yaw = fmod( 2 * PI + cam_yaw, 2 * PI );
+			cam_pitch = fmod( 2 * PI + cam_pitch, 2 * PI );
 			
 			u[0]=tx;
 			u[1]=ty;

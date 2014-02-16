@@ -15,14 +15,13 @@ typedef uint32_t GlyphIndex;
 /* Glyph outline converted to triangles */
 typedef struct GlyphTriangles {
 	float *points; /* 2 floats per point */
-	PointIndex *indices; /* 1. convex curves 2. concave curves 3. solid triangles */
 	PointFlag *flags; /* on-curve flags */
+	PointIndex *indices; /* 1. curve triangles 2. solid triangles */
 	uint16_t *end_points; /* Straight from TTF. Free'd after triangulation by ttf_file.c */
 	uint16_t num_points_total; /* total number of points, including generated points */
 	uint16_t num_points_orig; /* number of the original points from TTF file */
 	uint16_t num_indices_total;
-	uint16_t num_indices_convex;
-	uint16_t num_indices_concave;
+	uint16_t num_indices_curve;
 	uint16_t num_indices_solid;
 	uint16_t num_contours; /* only used internally */
 } GlyphTriangles;
@@ -61,24 +60,28 @@ typedef struct {
 } LongHorzMetrics;
 
 typedef struct Font {
-	SimpleGlyph **glyphs; /* Array of pointers to CompositeGlyph and SimpleGlyph */
-	void *all_glyphs; /* SimpleGlyphs and composite glyphs */
-	float *all_points;
-	PointIndex *all_indices;
-	PointFlag *all_flags;
-	size_t total_points;
-	size_t total_indices;
-	uint32_t gl_buffers[4]; /* vao, vbo, ibo, another vbo */
-	size_t num_glyphs; /* sizeof of glyphs array */
-	NibTree cmap;
+	size_t num_glyphs; /* how many glyphs the font has */
+	unsigned units_per_em; /* used to convert integer coordinates to floats */
+	
+	SimpleGlyph **glyphs; /* Array of pointers to glyphs. Each glyp can be either a SimpleGlyph or a composite glyph */
+	void *all_glyphs; /* one huge array that contains all SimpleGlyphs and composite glyphs */
+	float *all_points; /* a huge array that contains all the points of all simple glyphs */
+	PointFlag *all_flags; /* all point flags of all simple glyphs */
+	PointIndex *all_indices; /* all triangle indices of all simple glyphs */
+	size_t total_points; /* length of all_points and all_flags */
+	size_t total_indices; /* length of all_indices */
+	
+	/* Only used by gpufont_draw.c */
+	uint32_t gl_buffers[4]; /* VAO, point coordinate VBO, IBO, point flag VBO */
+	
+	/* Maps character codes to glyph indices */
+	NibTree cmap; /* Encoding could be anything. But its unicode for now */
 	
 	/* Horizontal metrics in EM units */
 	LongHorzMetrics *hmetrics; /* has one entry for each glyph (unlike TTF file) */
 	int horz_ascender;
 	int horz_descender;
 	int horz_linegap;
-	
-	unsigned units_per_em;
 } Font;
 
 void destroy_font( Font *font );

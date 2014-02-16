@@ -1,10 +1,8 @@
 #version 130
 
-const int FILL_CONVEX=0, FILL_CONCAVE=1, FILL_SOLID=2, SHOW_FLAGS=3;
-uniform int fill_mode = FILL_SOLID;
-
+flat in vec4 color_above; /* color above the curve y=x² */
+flat in vec4 color_below; /* color below the curve y=x² */
 in vec2 tex_coord;
-flat in vec4 vs_color;
 out vec4 frag_color;
 
 // Computes the intersection of 2 areas A and B, where
@@ -32,7 +30,12 @@ float get_coverage( float x1, float y1, float x2, float y2 )
 
 void main()
 {
-	if ( fill_mode < FILL_SOLID )
+	if ( all( equal( color_above, color_below ) ) )
+	{
+		/* Drawing solid triangles or points */
+		frag_color = color_above;
+	}
+	else
 	{
 		float u, v, x1, y1, x2, y2, alpha;
 		
@@ -45,23 +48,9 @@ void main()
 		y1 = tex_coord.y - v;
 		y2 = tex_coord.y + v;
 		
-		/* Can reject early if the sampling box doesn't even touch the curve */
-		if ( fill_mode == FILL_CONVEX ) {
-			if ( y2 < x1*x1 ) discard;
-		} else {
-			if ( y1 > x2*x2 ) discard;
-		}
-		
 		/* Integrate the area that falls inside this box */
 		alpha = get_coverage( x1, y1, x2, y2 );
 		
-		if ( fill_mode == FILL_CONVEX )
-			alpha = 1.0 - alpha;
-		
-		frag_color = vec4( vs_color.rgb, vs_color.a * alpha );
-	}
-	else
-	{
-		frag_color = vs_color;
+		frag_color = mix( color_above, color_below, alpha );
 	}
 }

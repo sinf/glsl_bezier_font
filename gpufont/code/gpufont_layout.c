@@ -12,30 +12,46 @@ typedef struct {
 	int32_t line_num;
 } TempChar;
 
-static void init_glyph_positions( Font font[1], TempChar chars[], uint32_t const text[], size_t text_len, size_t max_line_len )
+static size_t init_glyph_positions( Font font[1], TempChar chars[], uint32_t const text[], size_t text_len, int max_line_len )
 {
 	int32_t pos_x = 0;
 	int32_t line = 0;
-	size_t n, column = 0;
+	size_t n = 0;
+	int column = 0;
+	size_t num_out = 0;
 	
 	for( n=0; n<text_len; n++ )
 	{
 		GlyphIndex glyph;
 		uint32_t cha = text[n];
+		int is_newline = 0;
+		int is_visible = 1;
 		
-		chars[n].glyph = glyph = get_cmap_entry( font, cha );
-		chars[n].pos_x = pos_x - font->hmetrics[ glyph ].lsb;
-		chars[n].line_num = line;
+		glyph = get_cmap_entry( font, cha );
+		chars[num_out].glyph = glyph;
+		chars[num_out].pos_x = pos_x - font->hmetrics[ glyph ].lsb;
+		chars[num_out].line_num = line;
 		
-		if ( cha == '\n' || column == max_line_len ) {
+		if ( cha == '\n' ) {
+			is_newline = 1;
+			is_visible = 0;
+		} else if ( column == max_line_len ) {
+			is_newline = 1;
+		}
+		
+		if ( is_newline ) {
 			column = 0;
 			pos_x = 0;
 			line += 1;
-		} else {
+		} else if ( is_visible ) {
 			pos_x += font->hmetrics[ glyph ].adv_width;
 			column++;
 		}
+		
+		num_out += is_visible;
 	}
+	
+	return num_out;
 }
 
 static int sort_func( const void *x, const void *y )
@@ -48,37 +64,26 @@ static int sort_func( const void *x, const void *y )
 	return 0;
 }
 
-GlyphBatch *do_simple_layout( struct Font *font, uint32_t const *text, size_t text_len, size_t max_line_len, float line_height_scale )
+/* fields of 'output':
+"positions" MUST have been allocated to at least 2*text_len floats
+"glyph_indices" will be allocated if it hasn't been already
+"batch_len" will also be allocated if necessary, but "batch_len" must be NULL if "glyph_indices" is also NULL
+"glyph_indices" and "batch_len" must be in the same contiguous block of memory one after another
+*/
+static int do_simple_layout_internal( struct Font *font, uint32_t const *text, size_t text_len, int max_line_len, float line_height_scale, GlyphBatch *output, TempChar *chars )
 {
 	double em_conv = 1.0 / font->units_per_em;
 	double line_height = ( font->horz_ascender - font->horz_descender + font->horz_linegap ) * em_conv * line_height_scale;
-	TempChar *chars = NULL;
-	GlyphBatch *output = NULL;
 	size_t n, num_batches, cur_batch, cur_batch_len;
 	GlyphIndex prev_glyph;
 	
-	output = malloc( text_len * sizeof(*output) );
-	if ( !output )
-		return NULL;
-	
-	if ( !text_len ) {
-		output->positions = NULL;
-		output->glyph_indices = NULL;
-		output->batch_len = NULL;
-		output->batch_count = 0;
-		return output;
-	}
-	
-	chars = malloc( text_len * sizeof(*chars) );
-	if ( !chars )
-		goto error_handler;
-	
-	output->positions = malloc( text_len * sizeof(float) * 2 );
-	if ( !output->positions )
-		goto error_handler;
+	assert( text_len > 0 );
+	assert( output );
+	assert( output->positions );
+	assert( chars );
 	
 	/* Map character codes to glyph indices. Then compute x and y coordinates for each glyph */
-	init_glyph_positions( font, chars, text, text_len, max_line_len );
+	text_len = init_glyph_positions( font, chars, text, text_len, max_line_len );
 	
 	/* Put same glyphs into the same batches */
 	qsort( chars, text_len, sizeof(*chars), sort_func );
@@ -94,14 +99,17 @@ GlyphBatch *do_simple_layout( struct Font *font, uint32_t const *text, size_t te
 		}
 	}
 	
-	output->glyph_indices = malloc( num_batches * sizeof( size_t ) * 2 );
-	output->batch_len = output->glyph_indices + num_batches;
-	output->batch_count = num_batches;
-	
-	if ( !output->glyph_indices ) {
-		free( output->positions );
-		goto error_handler;
+	if ( !output->glyph_indices )
+	{
+		output->glyph_indices = malloc( num_batches * ( sizeof( output->glyph_indices[0] ) + sizeof( size_t ) ) );
+		output->batch_len = (size_t*)( output->glyph_indices + num_batches );
+		
+		if ( !output->glyph_indices )
+			return 0;
 	}
+	
+	assert( output->batch_len );
+	output->batch_count = num_batches;
 	
 	/* Write batch information */
 	prev_glyph = chars[0].glyph;
@@ -129,12 +137,68 @@ GlyphBatch *do_simple_layout( struct Font *font, uint32_t const *text, size_t te
 	output->batch_len[ cur_batch ] = cur_batch_len;
 	output->glyph_indices[ cur_batch ] = prev_glyph;
 	
+	return 1;
+}
+
+#define MAX_LIVE_LEN 320
+void draw_text_live( struct Font *font, uint32_t const *text, size_t text_len, int max_line_len, float line_height_scale, float global_transform[16], int draw_flags )
+{
+	GlyphBatch batch;
+	GlyphIndex glyph_indices[MAX_LIVE_LEN];
+	size_t batch_len[MAX_LIVE_LEN];
+	float positions[2*MAX_LIVE_LEN];
+	TempChar chars[MAX_LIVE_LEN];
+	
+	if ( !text_len )
+		return;
+	
+	if ( text_len > MAX_LIVE_LEN )
+		text_len = MAX_LIVE_LEN;
+	
+	batch.positions = positions;
+	batch.glyph_indices = glyph_indices;
+	batch.batch_len = batch_len;
+	batch.batch_count = 0;
+	
+	do_simple_layout_internal( font, text, text_len, max_line_len, line_height_scale, &batch, chars );
+	draw_glyph_batches( font, &batch, global_transform, draw_flags );
+}
+
+static GlyphBatch THE_EMPTY_BATCH = {
+	NULL, NULL, NULL, 0
+};
+
+GlyphBatch *do_simple_layout( struct Font *font, uint32_t const *text, size_t text_len, int max_line_len, float line_height_scale )
+{
+	GlyphBatch *b = NULL;
+	TempChar *chars = NULL;
+	float *positions = NULL;
+	
+	if ( !text_len )
+		return &THE_EMPTY_BATCH;
+	
+	b = malloc( sizeof(*b) );
+	chars = malloc( text_len * sizeof(*chars) );
+	positions = malloc( text_len * sizeof(float) * 2 );
+	
+	if ( !chars || !b || !positions )
+		goto error_handler;
+	
+	b->positions = positions;
+	b->glyph_indices = NULL;
+	b->batch_len = NULL;
+	b->batch_count = 0;
+	
+	if ( !do_simple_layout_internal( font, text, text_len, max_line_len, line_height_scale, b, chars ) )
+		goto error_handler;
+	
 	free( chars );
-	return output;
+	return b;
 	
 error_handler:;
+	if ( b ) free( b );
 	if ( chars ) free( chars );
-	if ( output ) free( output );
+	if ( positions ) free( positions );
 	return NULL;
 }
 
@@ -153,7 +217,10 @@ void draw_glyph_batches( struct Font *font, GlyphBatch *layout, float global_tra
 
 void delete_layout( GlyphBatch *b )
 {
-	if ( b->positions ) free( b->positions );
-	if ( b->glyph_indices ) free( b->glyph_indices );
-	free( b );
+	if ( b != &THE_EMPTY_BATCH )
+	{
+		if ( b->positions ) free( b->positions );
+		if ( b->glyph_indices ) free( b->glyph_indices );
+		free( b );
+	}
 }

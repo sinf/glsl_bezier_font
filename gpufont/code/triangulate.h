@@ -17,9 +17,10 @@ typedef enum {
 } TrError;
 
 struct GlyphTriangles;
-struct GLUtesselator;
-extern void gluDeleteTess( struct GLUtesselator * );
-struct GLUtesselator *triangulator_begin( void );
+struct Triangulator;
+
+struct Triangulator *triangulator_begin( void );
+void triangulator_end( struct Triangulator * );
 
 /* Before calling triangulate_contours()
 gt->end_points must not be NULL
@@ -27,6 +28,6 @@ gt->points must be allocated to 2*MAX_GLYPH_POINTS elements
 gt->flags must be allocated to MAX_GLYPH_POINTS elements
 Other fields in gt must also have been initialized
 */
-TrError triangulate_contours( struct GLUtesselator *glu_tess_handle, struct GlyphTriangles *gt );
+TrError triangulate_contours( struct Triangulator *, struct GlyphTriangles *gt );
 
 #endif

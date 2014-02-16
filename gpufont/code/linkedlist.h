@@ -1,5 +1,5 @@
-#ifndef _linkedlist_H
-#define _linkedlist_H
+#ifndef _LINKEDLIST_H
+#define _LINKEDLIST_H
 
 typedef unsigned short LLNodeID; /* sets a hard limit on linked list size */
 #define LL_BAD_INDEX 0xFFFF

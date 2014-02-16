@@ -1,11 +1,13 @@
 #ifndef _NIBBLE_TREE_H
 #define _NIBBLE_TREE_H
+#include <stdint.h>
 
 /* This module implements a 16-tree that maps integers to integers (e.g. it can be at most 8 levels deep for a 32-bit integer)
 I call it a "nibble tree" because of the way it is searched.
 Intented to be used by font_file.c for character code to glyph index translation */
 
-typedef unsigned NibValue;
+/* Should be the lowest common size of GlyphIndex and the biggest real world character code */
+typedef uint32_t NibValue;
 
 /* This structure must be zero-initialized before it can be used !! */
 typedef struct {

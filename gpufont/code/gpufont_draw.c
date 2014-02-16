@@ -268,26 +268,22 @@ static void draw_instances( Font *font, size_t num_instances, size_t glyph_index
 	
 	if ( flags & F_DRAW_TRIS )
 	{
-		uint16 n_curve, n_solid;
-		uint16 *offset;
 		GLenum index_type = GL_UINT_TYPE( PointIndex );
-		
-		offset = (uint16*) ( sizeof( font->all_indices[0] ) * ( glyph->tris.indices - font->all_indices ) );
-		
-		n_curve = glyph->tris.num_indices_curve;
-		n_solid = glyph->tris.num_indices_solid;
+		size_t offset = ( sizeof( PointIndex ) * ( glyph->tris.indices - font->all_indices ) );
+		uint16 n_curve = glyph->tris.num_indices_curve;
+		uint16 n_solid = glyph->tris.num_indices_solid;
 		
 		if ( ( flags & F_DRAW_CURVE ) && n_curve ) {
 			if ( flags & F_DEBUG_COLORS )
 				debug_color( 1 );
 			set_fill_mode( fill_curve );
-			glDrawElementsInstancedBaseVertex( GL_TRIANGLES, n_curve, index_type, offset, num_instances, first_vertex );
+			glDrawElementsInstancedBaseVertex( GL_TRIANGLES, n_curve, index_type, (void*) offset, num_instances, first_vertex );
 		}
 		if ( ( flags & F_DRAW_SOLID ) && n_solid ) {
 			if ( flags & F_DEBUG_COLORS )
 				debug_color( 4 );
 			set_fill_mode( FILL_SOLID );
-			glDrawElementsInstancedBaseVertex( GL_TRIANGLES, n_solid, index_type, offset+n_curve, num_instances, first_vertex );
+			glDrawElementsInstancedBaseVertex( GL_TRIANGLES, n_solid, index_type, (void*)( offset + sizeof(PointIndex) * n_curve ), num_instances, first_vertex );
 		}
 	}
 	
@@ -446,7 +442,7 @@ void draw_glyphs( struct Font *font, float global_transform[16], size_t glyph_in
 			if ( flags & F_DEBUG_COLORS ) debug_color( 2 );
 			set_fill_mode( FILL_SOLID );
 			glBindVertexArray( em_sq_vao );
-			glDrawArraysInstancedARB( ( flags & F_ALL_SOLID ) ? GL_TRIANGLE_STRIP : GL_LINE_LOOP, 0, 4, num_instances );
+			glDrawArraysInstancedARB( ( flags & F_ALL_SOLID ) ? GL_TRIANGLE_STRIP : GL_LINE_LOOP, 0, 4, count );
 			glBindVertexArray( font->gl_buffers[0] );
 		}
 		

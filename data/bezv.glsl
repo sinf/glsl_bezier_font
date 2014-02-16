@@ -45,28 +45,27 @@ void main()
 {
 	gl_Position = the_matrix * vec4( attr_pos + glyph_positions[ gl_InstanceID ], 0.0, 1.0 );
 	tex_coord = texc_table[ attr_flag & 3u ];
-	
 	switch( fill_mode )
 	{
 		case FILL_CURVE:
 			vec4 opaque = the_color;
 			vec4 transp = vec4( the_color.rgb, 0.0 );
-			if ( attr_flag >> 2 != 0u ) {
-				// Curve is convex. Paint above the curve
-				color_above = opaque;
-				color_below = transp;
-			} else {
+			if ( attr_flag >> 2 == 0u ) {
 				// Curve is concave. Paint below the curve
 				color_above = transp;
 				color_below = opaque;
+			} else {
+				// Curve is convex. Paint above the curve
+				color_above = opaque;
+				color_below = transp;
 			}
 			break;
-		case FILL_SOLID:
-			color_above = color_below = the_color;
-			break;
-		default:
 		case SHOW_FLAGS:
 			color_above = color_below = flag_colors[ attr_flag & 3u ];
+			break;
+		default:
+		case FILL_SOLID:
+			color_above = color_below = the_color;
 			break;
 	}
 }

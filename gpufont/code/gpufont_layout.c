@@ -140,7 +140,7 @@ static int do_simple_layout_internal( struct Font *font, uint32_t const *text, s
 	return 1;
 }
 
-#define MAX_LIVE_LEN 320
+#define MAX_LIVE_LEN 200
 void draw_text_live( struct Font *font, uint32_t const *text, size_t text_len, int max_line_len, float line_height_scale, float global_transform[16], int draw_flags )
 {
 	GlyphBatch batch;

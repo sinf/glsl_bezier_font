@@ -551,6 +551,9 @@ TrError triangulate_contours( struct Triangulator *trgu, struct GlyphTriangles *
 			point_flags[dummy] = point_flags[root];
 			point_coords[ 2 * dummy ] = point_coords[ 2 * root ];
 			point_coords[ 2 * dummy + 1 ] = point_coords[ 2 * root + 1 ];
+			
+			if ( dummy+1 > gt->num_points_total )
+				gt->num_points_total = dummy+1;
 		}
 		
 		node = root;
@@ -653,9 +656,9 @@ TrError triangulate_contours( struct Triangulator *trgu, struct GlyphTriangles *
 		/** gt->num_points_total += new_points_list.length; **/
 	}
 	
-	gt->num_indices_total = 3 * num_tris_curve + 3 * num_tris_solid;
 	gt->num_indices_curve = 3 * num_tris_curve;
 	gt->num_indices_solid = 3 * num_tris_solid;
+	gt->num_indices_total = gt->num_indices_curve + gt->num_indices_solid;
 	
 	if ( gt->num_indices_total > 0 )
 	{

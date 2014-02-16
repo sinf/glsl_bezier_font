@@ -9,8 +9,8 @@
 #define get_cmap_entry( font, code ) nibtree_get( &(font)->cmap, (code) )
 
 typedef uint16_t PointIndex;
-typedef uint32_t PointFlag;
 typedef uint32_t GlyphIndex;
+typedef uint32_t PointFlag;
 
 /* Glyph outline converted to triangles */
 typedef struct GlyphTriangles {

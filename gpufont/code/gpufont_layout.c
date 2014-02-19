@@ -7,7 +7,7 @@
 #include "gpufont_draw.h"
 #include "gpufont_layout.h"
 
-struct GlyphBatch {
+struct GlyphBuffer {
 	size_t batch_count; /* how many batches */
 	size_t total_glyphs;
 	float *positions; /* glyph position array */
@@ -22,11 +22,11 @@ typedef struct {
 	int32_t line_num;
 } TempChar;
 
-static void upload_positions( GlyphBatch *b, GLenum hint )
+static void upload_positions( GlyphBuffer *buf, GLenum hint )
 {
-	glGenBuffers( 1, &b->positions_vbo );
-	glBindBuffer( GL_ARRAY_BUFFER, b->positions_vbo );
-	glBufferData( GL_ARRAY_BUFFER, b->total_glyphs * 2 * sizeof( float ), b->positions, hint );
+	glGenBuffers( 1, &buf->positions_vbo );
+	glBindBuffer( GL_ARRAY_BUFFER, buf->positions_vbo );
+	glBufferData( GL_ARRAY_BUFFER, buf->total_glyphs * 2 * sizeof( float ), buf->positions, hint );
 }
 
 static size_t init_glyph_positions( Font font[1], TempChar chars[], uint32_t const text[], size_t text_len, int max_line_len )
@@ -87,7 +87,7 @@ static int sort_func( const void *x, const void *y )
 "batch_len" will also be allocated if necessary, but "batch_len" must be NULL if "glyph_indices" is also NULL
 "glyph_indices" and "batch_len" must be in the same contiguous block of memory one after another
 */
-static int do_simple_layout_internal( struct Font *font, uint32_t const *text, size_t text_len, int max_line_len, float line_height_scale, GlyphBatch *output, TempChar *chars )
+static int do_simple_layout_internal( struct Font *font, uint32_t const *text, size_t text_len, int max_line_len, float line_height_scale, GlyphBuffer *output, TempChar *chars )
 {
 	double em_conv = 1.0 / font->units_per_em;
 	double line_height = ( font->horz_ascender - font->horz_descender + font->horz_linegap ) * em_conv * line_height_scale;
@@ -161,7 +161,7 @@ static int do_simple_layout_internal( struct Font *font, uint32_t const *text, s
 #define MAX_LIVE_LEN 200
 void draw_text_live( struct Font *font, uint32_t const *text, size_t text_len, int max_line_len, float line_height_scale, float global_transform[16], int draw_flags )
 {
-	GlyphBatch batch;
+	GlyphBuffer batch;
 	GlyphIndex glyph_indices[MAX_LIVE_LEN];
 	size_t batch_len[MAX_LIVE_LEN];
 	float positions[2*MAX_LIVE_LEN];
@@ -180,22 +180,22 @@ void draw_text_live( struct Font *font, uint32_t const *text, size_t text_len, i
 	
 	do_simple_layout_internal( font, text, text_len, max_line_len, line_height_scale, &batch, chars );
 	upload_positions( &batch, GL_STREAM_DRAW );
-	draw_glyph_batches( font, &batch, global_transform, draw_flags );
+	draw_glyph_buffer( font, &batch, global_transform, draw_flags );
 	glDeleteBuffers( 1, &batch.positions_vbo );
 }
 
-static GlyphBatch THE_EMPTY_BATCH = {
+static GlyphBuffer THE_EMPTY_BUFFER = {
 	0, 0, NULL, NULL, NULL, 0
 };
 
-GlyphBatch *do_simple_layout( struct Font *font, uint32_t const *text, size_t text_len, int max_line_len, float line_height_scale )
+GlyphBuffer *do_simple_layout( struct Font *font, uint32_t const *text, size_t text_len, int max_line_len, float line_height_scale )
 {
-	GlyphBatch *b = NULL;
+	GlyphBuffer *b = NULL;
 	TempChar *chars = NULL;
 	float *positions = NULL;
 	
 	if ( !text_len )
-		return &THE_EMPTY_BATCH;
+		return &THE_EMPTY_BUFFER;
 	
 	b = malloc( sizeof(*b) );
 	chars = malloc( text_len * sizeof(*chars) );
@@ -212,8 +212,13 @@ GlyphBatch *do_simple_layout( struct Font *font, uint32_t const *text, size_t te
 	if ( !do_simple_layout_internal( font, text, text_len, max_line_len, line_height_scale, b, chars ) )
 		goto error_handler;
 	
-	free( chars );
 	upload_positions( b, GL_STATIC_DRAW );
+	
+	free( chars );
+	free( b->positions );
+	b->positions = NULL;
+	
+	/* Success */
 	return b;
 	
 error_handler:;
@@ -223,27 +228,25 @@ error_handler:;
 	return NULL;
 }
 
-void draw_glyph_batches( struct Font *font, GlyphBatch *layout, float global_transform[16], int draw_flags )
+void draw_glyph_buffer( struct Font *font, GlyphBuffer *buf, float global_transform[16], int draw_flags )
 {
-	size_t b, num_batches = layout->batch_count;
+	size_t b, num_batches = buf->batch_count;
 	size_t first = 0;
 	for( b=0; b<num_batches; b++ )
 	{
-		GlyphIndex index = layout->glyph_indices[ b ];
-		size_t count = layout->batch_len[ b ];
-		bind_glyph_positions( layout->positions_vbo, first );
-		draw_glyphs( font, global_transform, index, count, draw_flags );
-		first += count;
+		bind_glyph_positions( buf->positions_vbo, first );
+		draw_glyphs( font, global_transform, buf->glyph_indices[b], buf->batch_len[b], draw_flags );
+		first += buf->batch_len[b];
 	}
 }
 
-void delete_layout( GlyphBatch *b )
+void delete_glyph_buffer( GlyphBuffer *buf )
 {
-	if ( b != &THE_EMPTY_BATCH )
+	if ( buf != &THE_EMPTY_BUFFER )
 	{
-		if ( b->positions_vbo ) glDeleteBuffers( 1, &b->positions_vbo );
-		if ( b->positions ) free( b->positions );
-		if ( b->glyph_indices ) free( b->glyph_indices );
-		free( b );
+		if ( buf->positions_vbo ) glDeleteBuffers( 1, &buf->positions_vbo );
+		if ( buf->positions ) free( buf->positions );
+		if ( buf->glyph_indices ) free( buf->glyph_indices );
+		free( buf );
 	}
 }

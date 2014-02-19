@@ -49,7 +49,7 @@ static uint32 the_glyph_index = 0;
 enum { GLYPH_ARRAY_S = 128 };
 static float the_glyph_coords[GLYPH_ARRAY_S][GLYPH_ARRAY_S][2];
 static GLuint the_glyph_coords_vbo = 0;
-static GlyphBatch *my_layout = NULL;
+static GlyphBuffer *my_layout = NULL;
 
 static int lookup_test_char( Font *font, int32 cc )
 {
@@ -88,9 +88,9 @@ static int lookup_test_char( Font *font, int32 cc )
 	}
 }
 
-static GlyphBatch *load_text_file( Font *font, const char *filename )
+static GlyphBuffer *load_text_file( Font *font, const char *filename )
 {
-	GlyphBatch *layout = NULL;
+	GlyphBuffer *layout = NULL;
 	FILE *fp;
 	uint32 *text;
 	long len;
@@ -391,14 +391,14 @@ static void repaint( void )
 		/* Show a text file */
 		
 		set_text_color( c_white );
-		draw_glyph_batches( &the_font, my_layout, mvp, glyph_draw_flags );
+		draw_glyph_buffer( &the_font, my_layout, mvp, glyph_draw_flags );
 		
 		if ( wire_mode == 1 )
 		{
 			glDisable( GL_DEPTH_TEST );
 			glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
 			set_text_color( c_white );
-			draw_glyph_batches( &the_font, my_layout, mvp, F_DRAW_TRIS | F_ALL_SOLID );
+			draw_glyph_buffer( &the_font, my_layout, mvp, F_DRAW_TRIS | F_ALL_SOLID );
 			glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
 			glEnable( GL_DEPTH_TEST );
 		}

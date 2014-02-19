@@ -37,13 +37,15 @@ typedef enum {
 enum {
 	BATCH_SIZE = 2024, /* used to be 2024 */
 	UBLOCK_BINDING = 0,
-	USE_UBO = 0
+	USE_UBO = 0,
+	USE_ATTR_DIVISOR = 1
 };
 
 static GLuint the_prog = 0;
 static GLuint em_sq_vao = 0, em_sq_vbo = 0;
 static float const em_sq_points[4*2] = {0,0,1,0,1,1,0,1};
 static GLint max_ubo_size = 0;
+static GLuint glyph_positions_vbo = 0;
 
 static void prepare_em_sq( void )
 {
@@ -85,7 +87,11 @@ int init_font_shader( GLuint_ linked_compiled_prog )
 	uniforms.the_color = glGetUniformLocation( the_prog, "the_color" );
 	uniforms.fill_mode = glGetUniformLocation( the_prog, "fill_mode" );
 	
-	if ( USE_UBO ) {
+	if ( USE_ATTR_DIVISOR ) {
+		glGenBuffers( 1, &glyph_positions_vbo );
+		glBindBuffer( GL_ARRAY_BUFFER, glyph_positions_vbo );
+		glBufferData( GL_ARRAY_BUFFER, BATCH_SIZE * 2 * sizeof( float ), NULL, GL_STREAM_DRAW );
+	} else if ( USE_UBO ) {
 		/* temporarily moved to draw_glyphs */
 		/*
 		const GLchar *block_name = "GlyphPositions";
@@ -390,7 +396,12 @@ void draw_glyphs( struct Font *font, float global_transform[16], size_t glyph_in
 	if ( !end )
 		end = end < BATCH_SIZE ? num_instances : BATCH_SIZE;
 	
-	if ( USE_UBO ) {
+	if ( USE_ATTR_DIVISOR ) {
+		glEnableVertexAttribArray( 2 );
+		glBindBuffer( GL_ARRAY_BUFFER, glyph_positions_vbo );
+		glVertexAttribPointer( 2, 2, GL_FLOAT, GL_FALSE, 0, NULL );
+		glVertexAttribDivisor( 2, 1 );
+	} else if ( USE_UBO ) {
 		const GLchar *block_name = "GlyphPositions";
 		GLint ubo_size;
 		
@@ -424,7 +435,9 @@ void draw_glyphs( struct Font *font, float global_transform[16], size_t glyph_in
 	do {
 		count = end - start;
 		
-		if ( USE_UBO ) {
+		if ( USE_ATTR_DIVISOR ) {
+			glBufferSubData( GL_ARRAY_BUFFER, 0, sizeof( float ) * 2 * count, positions + 2*start );
+		} else if ( USE_UBO ) {
 			glBindBufferRange( GL_UNIFORM_BUFFER, ub_index, ubo, 0, sizeof( float ) * 2 * count );
 			glBufferSubData( GL_UNIFORM_BUFFER, 0, sizeof( float ) * 2 * count, positions + 2*start );
 		} else {
@@ -451,7 +464,10 @@ void draw_glyphs( struct Font *font, float global_transform[16], size_t glyph_in
 		
 	} while( end <= num_instances );
 	
-	if ( USE_UBO ) {
+	if ( USE_ATTR_DIVISOR ) {
+		glVertexAttribDivisor( 2, 0 );
+		glDisableVertexAttribArray( 2 );
+	} else if ( USE_UBO ) {
 		glBindBuffer( GL_UNIFORM_BUFFER, 0 );
 		glDeleteBuffers( 1, &ubo );
 	}

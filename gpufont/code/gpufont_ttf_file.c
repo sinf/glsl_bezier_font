@@ -1002,8 +1002,11 @@ FontStatus load_ttf_file( struct Font *font, const char filename[] )
 	if ( fread( &file_ident, 4, 1, fp ) != 1 ) {
 		status = F_FAIL_EOF;
 	} else {
+		#define USE_SDL_TIMING 0
+		#if USE_SDL_TIMING
 		extern uint32 SDL_GetTicks( void );
 		uint32 t = SDL_GetTicks();
+		#endif
 		
 		if ( file_ident == htonl( 0x10000 ) ) {
 			/* This is a TrueType font file (sfnt version 1.0)
@@ -1019,8 +1022,10 @@ FontStatus load_ttf_file( struct Font *font, const char filename[] )
 		
 		if ( status == F_SUCCESS )
 		{
+			#if USE_SDL_TIMING
 			t = SDL_GetTicks() - t;
 			printf( "File I/O took %u milliseconds\n", (unsigned) t );
+			#endif
 			
 			if ( triangulate_all_glyphs( font ) != TR_SUCCESS )
 				status = F_FAIL_TRIANGULATE;

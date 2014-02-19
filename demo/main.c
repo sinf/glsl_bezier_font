@@ -48,6 +48,7 @@ static uint32 the_glyph_index = 0;
 
 enum { GLYPH_ARRAY_S = 128 };
 static float the_glyph_coords[GLYPH_ARRAY_S][GLYPH_ARRAY_S][2];
+static GLuint the_glyph_coords_vbo = 0;
 static GlyphBatch *my_layout = NULL;
 
 static int lookup_test_char( Font *font, int32 cc )
@@ -193,6 +194,7 @@ static int load_resources( void )
 		else
 		{
 			int x, y;
+			GLuint vbo;
 			
 			printf(
 				"Number of glyph instances (the grid) = %ux%u = %u\n"
@@ -209,6 +211,11 @@ static int load_resources( void )
 					the_glyph_coords[y][x][1] = y - GLYPH_ARRAY_S / 2;
 				}
 			}
+			
+			glGenBuffers( 1, &vbo );
+			glBindBuffer( GL_ARRAY_BUFFER, vbo );
+			the_glyph_coords_vbo = vbo;
+			glBufferData( GL_ARRAY_BUFFER, sizeof( the_glyph_coords ), the_glyph_coords, GL_STATIC_DRAW );
 		}
 	}
 	else
@@ -224,7 +231,8 @@ static int load_resources( void )
 
 static void free_resources( void )
 {
-	/* free memory, close files,
+	/* todo:
+	free memory, close files,
 	release GPU buffers etc.. */
 }
 
@@ -358,9 +366,10 @@ static void repaint( void )
 		
 		/* draw a huge array of the same glyph */
 		set_text_color( c_white );
+		bind_glyph_positions( the_glyph_coords_vbo, 0 );
+		
 		draw_glyphs( &the_font, mvp, g,
 			GLYPH_ARRAY_S*GLYPH_ARRAY_S,
-			&the_glyph_coords[0][0][0],
 			wire_mode ? glyph_draw_flags : F_DRAW_TRIS );
 		
 		if ( wire_mode == 1 )
@@ -371,7 +380,6 @@ static void repaint( void )
 			set_text_color( c_white );
 			draw_glyphs( &the_font, mvp, g,
 				GLYPH_ARRAY_S*GLYPH_ARRAY_S,
-				&the_glyph_coords[0][0][0],
 				F_DRAW_TRIS | F_ALL_SOLID );
 			
 			glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );

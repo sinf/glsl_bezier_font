@@ -30,8 +30,9 @@ void release_font( struct Font * );
 void begin_text( struct Font * );
 void end_text( void );
 
-/* Actual draw calls */
+/* Actual draw calls. positions_vbo should be a VBO that has data like this: vec2 positions[num_instances] */
 void set_text_color( float color[4] );
-void draw_glyphs( struct Font *font, float global_transform[16], size_t glyph_index, size_t num_instances, float positions[], int flags );
+void bind_glyph_positions( GLuint_ vbo, size_t first ); /* The vbo should have as many vec2's as the num_instances passed to draw_glyphs. 'first' is interpreted as an index to the first vec2 */
+void draw_glyphs( struct Font *font, float global_transform[16], size_t glyph_index, size_t num_instances, int flags );
 
 #endif

@@ -2,15 +2,18 @@
 #include <assert.h>
 #include <stdint.h>
 #include <ctype.h>
+#include "opengl.h"
 #include "gpufont_data.h"
 #include "gpufont_draw.h"
 #include "gpufont_layout.h"
 
 struct GlyphBatch {
 	size_t batch_count; /* how many batches */
+	size_t total_glyphs;
 	float *positions; /* glyph position array */
 	GlyphIndex *glyph_indices; /* one glyph index per batch */
 	size_t *batch_len; /* length of each batch */
+	GLuint positions_vbo;
 };
 
 typedef struct {
@@ -18,6 +21,13 @@ typedef struct {
 	int32_t pos_x;
 	int32_t line_num;
 } TempChar;
+
+static void upload_positions( GlyphBatch *b, GLenum hint )
+{
+	glGenBuffers( 1, &b->positions_vbo );
+	glBindBuffer( GL_ARRAY_BUFFER, b->positions_vbo );
+	glBufferData( GL_ARRAY_BUFFER, b->total_glyphs * 2 * sizeof( float ), b->positions, hint );
+}
 
 static size_t init_glyph_positions( Font font[1], TempChar chars[], uint32_t const text[], size_t text_len, int max_line_len )
 {
@@ -117,6 +127,7 @@ static int do_simple_layout_internal( struct Font *font, uint32_t const *text, s
 	
 	assert( output->batch_len );
 	output->batch_count = num_batches;
+	output->total_glyphs = text_len;
 	
 	/* Write batch information */
 	prev_glyph = chars[0].glyph;
@@ -168,11 +179,13 @@ void draw_text_live( struct Font *font, uint32_t const *text, size_t text_len, i
 	batch.batch_count = 0;
 	
 	do_simple_layout_internal( font, text, text_len, max_line_len, line_height_scale, &batch, chars );
+	upload_positions( &batch, GL_STREAM_DRAW );
 	draw_glyph_batches( font, &batch, global_transform, draw_flags );
+	glDeleteBuffers( 1, &batch.positions_vbo );
 }
 
 static GlyphBatch THE_EMPTY_BATCH = {
-	0, NULL, NULL, NULL
+	0, 0, NULL, NULL, NULL, 0
 };
 
 GlyphBatch *do_simple_layout( struct Font *font, uint32_t const *text, size_t text_len, int max_line_len, float line_height_scale )
@@ -200,6 +213,7 @@ GlyphBatch *do_simple_layout( struct Font *font, uint32_t const *text, size_t te
 		goto error_handler;
 	
 	free( chars );
+	upload_positions( b, GL_STATIC_DRAW );
 	return b;
 	
 error_handler:;
@@ -211,14 +225,15 @@ error_handler:;
 
 void draw_glyph_batches( struct Font *font, GlyphBatch *layout, float global_transform[16], int draw_flags )
 {
-	float *pos = layout->positions;
 	size_t b, num_batches = layout->batch_count;
+	size_t first = 0;
 	for( b=0; b<num_batches; b++ )
 	{
 		GlyphIndex index = layout->glyph_indices[ b ];
 		size_t count = layout->batch_len[ b ];
-		draw_glyphs( font, global_transform, index, count, pos, draw_flags );
-		pos += 2 * count;
+		bind_glyph_positions( layout->positions_vbo, first );
+		draw_glyphs( font, global_transform, index, count, draw_flags );
+		first += count;
 	}
 }
 
@@ -226,6 +241,7 @@ void delete_layout( GlyphBatch *b )
 {
 	if ( b != &THE_EMPTY_BATCH )
 	{
+		if ( b->positions_vbo ) glDeleteBuffers( 1, &b->positions_vbo );
 		if ( b->positions ) free( b->positions );
 		if ( b->glyph_indices ) free( b->glyph_indices );
 		free( b );

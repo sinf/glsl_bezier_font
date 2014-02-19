@@ -21,8 +21,6 @@ typedef uint16_t uint16;
 #define GL_FLOAT_TYPE( t ) ( sizeof( t ) == 4 ? GL_FLOAT : GL_DOUBLE )
 
 static struct {
-	GLuint glyph_positions_ub;
-	GLint glyph_positions;
 	GLint the_matrix;
 	GLint the_color;
 	GLint fill_mode;
@@ -34,18 +32,9 @@ typedef enum {
 	SHOW_FLAGS=3
 } FillMode;
 
-enum {
-	BATCH_SIZE = 2024, /* used to be 2024 */
-	UBLOCK_BINDING = 0,
-	USE_UBO = 0,
-	USE_ATTR_DIVISOR = 1
-};
-
 static GLuint the_prog = 0;
 static GLuint em_sq_vao = 0, em_sq_vbo = 0;
 static float const em_sq_points[4*2] = {0,0,1,0,1,1,0,1};
-static GLint max_ubo_size = 0;
-static GLuint glyph_positions_vbo = 0;
 
 static void prepare_em_sq( void )
 {
@@ -77,8 +66,6 @@ int init_font_shader( GLuint_ linked_compiled_prog )
 		return 0;
 	}
 	*/
-	glGetIntegerv( GL_MAX_UNIFORM_BLOCK_SIZE, &max_ubo_size );
-	printf( "Max uniform block size: %d bytes (%d vec2's)\n", (int) max_ubo_size, (int)(max_ubo_size/sizeof(float)/2) );
 	
 	the_prog = linked_compiled_prog;
 	
@@ -86,34 +73,6 @@ int init_font_shader( GLuint_ linked_compiled_prog )
 	uniforms.the_matrix = glGetUniformLocation( the_prog, "the_matrix" );
 	uniforms.the_color = glGetUniformLocation( the_prog, "the_color" );
 	uniforms.fill_mode = glGetUniformLocation( the_prog, "fill_mode" );
-	
-	if ( USE_ATTR_DIVISOR ) {
-		glGenBuffers( 1, &glyph_positions_vbo );
-		glBindBuffer( GL_ARRAY_BUFFER, glyph_positions_vbo );
-		glBufferData( GL_ARRAY_BUFFER, BATCH_SIZE * 2 * sizeof( float ), NULL, GL_STREAM_DRAW );
-	} else if ( USE_UBO ) {
-		/* temporarily moved to draw_glyphs */
-		/*
-		const GLchar *block_name = "GlyphPositions";
-		GLuint block_index;
-		
-		printf( "Setting up uniform block\n" );
-		block_index = glGetUniformBlockIndex( the_prog, block_name );
-		
-		if ( block_index == GL_INVALID_INDEX ) {
-			printf( "Could not find uniform block %s\n", block_name );
-			return 0;
-		} else {
-			printf( "Uniform block index: %u\n", block_index );
-		}
-		
-		uniforms.glyph_positions_ub = block_index;
-		glUniformBlockBinding( the_prog, block_index, UBLOCK_BINDING );
-		*/
-	} else {
-		printf( "Not using UBO\n" );
-		uniforms.glyph_positions = glGetUniformLocation( the_prog, "glyph_positions" );
-	}
 	
 	prepare_em_sq();
 	
@@ -184,19 +143,20 @@ void prepare_font( Font *font )
 	glGenBuffers( 3, buf+1 );
 	
 	glBindVertexArray( buf[0] );
+	glEnableVertexAttribArray( 0 );
+	glEnableVertexAttribArray( 1 );
+	glEnableVertexAttribArray( 2 ); /* don't have a VBO for this attribute yet */
 	
 	/* point coords & indices */
 	glBindBuffer( GL_ARRAY_BUFFER, buf[1] );
 	glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, buf[2] );
 	glBufferData( GL_ARRAY_BUFFER, font->total_points * sizeof( float ) * 2, font->all_points, GL_STATIC_DRAW );
 	glBufferData( GL_ELEMENT_ARRAY_BUFFER, font->total_indices * sizeof( PointIndex ), font->all_indices, GL_STATIC_DRAW );
-	glEnableVertexAttribArray( 0 );
 	glVertexAttribPointer( 0, 2, GL_FLOAT, GL_FALSE, 0, 0 );
 	
 	/* point flags */
 	glBindBuffer( GL_ARRAY_BUFFER, buf[3] );
 	glBufferData( GL_ARRAY_BUFFER, font->total_points * sizeof( PointFlag ), font->all_flags, GL_STATIC_DRAW );
-	glEnableVertexAttribArray( 1 );
 	glVertexAttribIPointer( 1, 1, GL_UINT_TYPE( PointFlag ), 0, 0 );
 	
 	glBindVertexArray( 0 );
@@ -235,10 +195,12 @@ void begin_text( Font *font )
 	glUseProgram( the_prog );
 	debug_color( 0 );
 	glBindVertexArray( font->gl_buffers[0] );
+	glVertexAttribDivisor( 2, 1 );
 }
 
 void end_text( void )
 {
+	glVertexAttribDivisor( 2, 0 );
 	glBindVertexArray( 0 );
 }
 
@@ -373,13 +335,15 @@ static void draw_composite_glyph( Font *font, void *glyph, size_t num_instances,
 }
 #endif
 
-void draw_glyphs( struct Font *font, float global_transform[16], size_t glyph_index, size_t num_instances, float positions[], int flags )
+void bind_glyph_positions( GLuint_ vbo, size_t first )
+{
+	glBindBuffer( GL_ARRAY_BUFFER, vbo );
+	glVertexAttribPointer( 2, 2, GL_FLOAT, GL_FALSE, 0, (void*)( first * 2 * sizeof( float ) ) );
+}
+
+void draw_glyphs( struct Font *font, float global_transform[16], size_t glyph_index, size_t num_instances, int flags )
 {
 	SimpleGlyph *glyph;
-	size_t start, end, count;
-	GLuint ubo;
-	GLuint ub_index;
-	int is_simple;
 	
 	if ( !num_instances )
 		return;
@@ -391,84 +355,20 @@ void draw_glyphs( struct Font *font, float global_transform[16], size_t glyph_in
 		return;
 	}
 	
-	start = 0;
-	end = num_instances % BATCH_SIZE;
-	if ( !end )
-		end = end < BATCH_SIZE ? num_instances : BATCH_SIZE;
-	
-	if ( USE_ATTR_DIVISOR ) {
-		glEnableVertexAttribArray( 2 );
-		glBindBuffer( GL_ARRAY_BUFFER, glyph_positions_vbo );
-		glVertexAttribPointer( 2, 2, GL_FLOAT, GL_FALSE, 0, NULL );
-		glVertexAttribDivisor( 2, 1 );
-	} else if ( USE_UBO ) {
-		const GLchar *block_name = "GlyphPositions";
-		GLint ubo_size;
-		
-		ub_index = glGetUniformBlockIndex( the_prog, block_name );
-		if ( ub_index == GL_INVALID_INDEX ) {
-			printf( "Could not find uniform block %s\n", block_name );
-			exit( 1 );
-		}
-		
-		glUniformBlockBinding( the_prog, ub_index, UBLOCK_BINDING );
-		ubo_size = sizeof( float ) * 2 * BATCH_SIZE;
-		
-		if ( ubo_size > max_ubo_size ) {
-			printf( "Too big UBO; need %u but can have at most %u bytes\n", ubo_size, max_ubo_size );
-			return;
-		}
-		
-		glGenBuffers( 1, &ubo );
-		glBindBuffer( GL_UNIFORM_BUFFER, ubo );
-		glBufferData( GL_UNIFORM_BUFFER, ubo_size, NULL, GL_STREAM_DRAW );
-	}
-	
-	is_simple = IS_SIMPLE_GLYPH( glyph );
-	if ( is_simple ) {
-		/* The glyph consists of only one part
-		and every batch draws many instances of that same part.
-		Therefore every batch shares the same matrix */
+	if ( IS_SIMPLE_GLYPH( glyph ) ) {
 		send_matrix( global_transform );
+		draw_instances( font, num_instances, glyph_index, flags );
+	} else {
+		#if ENABLE_COMPOSITE_GLYPHS
+		draw_composite_glyph( font, glyph, num_instances, global_transform, flags );
+		#endif
 	}
 	
-	do {
-		count = end - start;
-		
-		if ( USE_ATTR_DIVISOR ) {
-			glBufferSubData( GL_ARRAY_BUFFER, 0, sizeof( float ) * 2 * count, positions + 2*start );
-		} else if ( USE_UBO ) {
-			glBindBufferRange( GL_UNIFORM_BUFFER, ub_index, ubo, 0, sizeof( float ) * 2 * count );
-			glBufferSubData( GL_UNIFORM_BUFFER, 0, sizeof( float ) * 2 * count, positions + 2*start );
-		} else {
-			glUniform2fv( uniforms.glyph_positions, count, positions+2*start );
-		}
-		
-		if ( is_simple )
-			draw_instances( font, count, glyph_index, flags );
-		#if ENABLE_COMPOSITE_GLYPHS
-		else
-			draw_composite_glyph( font, glyph, count, global_transform, flags );
-		#endif
-		
-		if ( flags & F_DRAW_SQUARE ) {
-			if ( flags & F_DEBUG_COLORS ) debug_color( 2 );
-			set_fill_mode( FILL_SOLID );
-			glBindVertexArray( em_sq_vao );
-			glDrawArraysInstancedARB( ( flags & F_ALL_SOLID ) ? GL_TRIANGLE_STRIP : GL_LINE_LOOP, 0, 4, count );
-			glBindVertexArray( font->gl_buffers[0] );
-		}
-		
-		start = end;
-		end += BATCH_SIZE;
-		
-	} while( end <= num_instances );
-	
-	if ( USE_ATTR_DIVISOR ) {
-		glVertexAttribDivisor( 2, 0 );
-		glDisableVertexAttribArray( 2 );
-	} else if ( USE_UBO ) {
-		glBindBuffer( GL_UNIFORM_BUFFER, 0 );
-		glDeleteBuffers( 1, &ubo );
+	if ( flags & F_DRAW_SQUARE ) {
+		if ( flags & F_DEBUG_COLORS ) debug_color( 2 );
+		set_fill_mode( FILL_SOLID );
+		glBindVertexArray( em_sq_vao );
+		glDrawArraysInstancedARB( ( flags & F_ALL_SOLID ) ? GL_TRIANGLE_STRIP : GL_LINE_LOOP, 0, 4, num_instances );
+		glBindVertexArray( font->gl_buffers[0] );
 	}
 }

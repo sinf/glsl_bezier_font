@@ -2,19 +2,6 @@
 #extension GL_ARB_explicit_attrib_location : require
 #extension GL_ARB_draw_instanced : require
 
-#if 1
-#define USE_DIVISOR 1
-layout(location=2) in vec2 attr_instance_offset;
-#else
-#define BATCH_SIZE 2024
-#if 1
-uniform vec2 glyph_positions[BATCH_SIZE];
-#else
-#extension GL_ARB_uniform_buffer_object : require
-layout(std140) uniform GlyphPositions { vec2 glyph_positions[BATCH_SIZE]; };
-#endif
-#endif
-
 const int FILL_CURVE=0, FILL_SOLID=2, SHOW_FLAGS=3;
 uniform int fill_mode = FILL_SOLID;
 uniform mat4 the_matrix;
@@ -22,6 +9,7 @@ uniform vec4 the_color;
 
 layout(location=0) in vec2 attr_pos;
 layout(location=1) in uint attr_flag;
+layout(location=2) in vec2 attr_instance_offset; /* one attribute per instance */
 
 flat out vec4 color_above;
 flat out vec4 color_below;
@@ -47,11 +35,7 @@ const vec4 flag_colors[4] = vec4[4](
 
 void main()
 {
-	#if USE_DIVISOR
 	gl_Position = the_matrix * vec4( attr_pos + attr_instance_offset, 0.0, 1.0 );
-	#else
-	gl_Position = the_matrix * vec4( attr_pos + glyph_positions[ gl_InstanceID ], 0.0, 1.0 );
-	#endif
 	tex_coord = texc_table[ attr_flag & 3u ];
 	switch( fill_mode )
 	{

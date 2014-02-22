@@ -1,5 +1,6 @@
 #ifndef _LINKEDLIST_H
 #define _LINKEDLIST_H
+#include <stddef.h>
 
 typedef unsigned short LLNodeID; /* sets a hard limit on linked list size */
 #define LL_BAD_INDEX 0xFFFF
@@ -20,8 +21,8 @@ typedef struct {
 
 /* Used to create an empty list. Can use any memory (stack/heap/whatever)
 Note: the actual data of nodes' is kept in a separate array and accessed via node indices
-To use the entire pool, set first_node=0 and num_nodes=(size of the pool) */
-void init_list( LinkedList list[1], LLNode pool[], LLNodeID first_node, LLNodeID last_node );
+To use the entire pool, set first_node=0 and last_node=(size of the pool minus one) */
+void init_list( LinkedList list[1], LLNode pool[], size_t first_node, size_t last_node );
 
 /* Removes a node from the list */
 void pop_node( LinkedList list[1], LLNodeID node );

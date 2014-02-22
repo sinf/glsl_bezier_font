@@ -1,8 +1,10 @@
 #include <assert.h>
 #include "linkedlist.h"
 
-void init_list( LinkedList list[1], LLNode pool[], LLNodeID first_node, LLNodeID last_node )
+void init_list( LinkedList list[1], LLNode pool[], size_t first_node, size_t last_node )
 {
+	assert( last_node < (1<<8*sizeof(LLNodeID)) );
+	
 	list->pool = pool;
 	list->free_root_p = &list->free_root;
 	list->length = 0;

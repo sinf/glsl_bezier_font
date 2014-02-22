@@ -19,7 +19,7 @@ typedef uint32_t uint32;
 typedef unsigned uint;
 
 enum {
-	DEBUG_DUMP = 1, /* enable/disable level 1 debug messages */
+	DEBUG_DUMP = 0, /* enable/disable level 1 debug messages */
 	DEBUG_DUMP2 = 0, /* enable/disable level 2 debug messages */
 	ENABLE_OPENMP = 1 /* used for triangulating glyphs. huge speed boost for CJK fonts */
 };

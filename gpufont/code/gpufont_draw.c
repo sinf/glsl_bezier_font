@@ -85,7 +85,7 @@ static void get_average_glyph_stats( Font *font, unsigned avg[3], unsigned max[3
 	max[0] = max[1] = max[2] = 0;
 	for( n=0; n<( font->num_glyphs ); n++ )
 		add_glyph_stats( font, font->glyphs[n], total, max );
-	for( n=0; n<4; n++ )
+	for( n=0; n<3; n++ )
 		avg[n] = total[n] / font->num_glyphs;
 }
 

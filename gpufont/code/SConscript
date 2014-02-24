@@ -1,5 +1,6 @@
 e=Environment()
 e.Append(CCFLAGS=Split("-ansi -pedantic -Wall -Wextra -Werror -g -fopenmp"))
+e.Append(CCFLAGS=Split("-O2 -DNDEBUG"))
 e.Append(LIBS=["m"])
 e.Append(CPPPATH=["../include"])
 e.ParseConfig("pkg-config --cflags glew gl glu")

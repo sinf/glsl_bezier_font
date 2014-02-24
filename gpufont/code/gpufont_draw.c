@@ -6,24 +6,23 @@
 #include "gpufont_data.h"
 #include "gpufont_draw.h"
 
-typedef uint32_t uint32;
-typedef uint16_t uint16;
+#define GET_UINT_TYPE( t ) ( sizeof( t ) == 1 ? GL_UNSIGNED_BYTE : ( sizeof( t ) == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT ) )
+#define GET_INT_TYPE( t ) ( sizeof( t ) == 1 ? GL_BYTE : ( sizeof( t ) == 2 ? GL_SHORT : GL_INT ) )
+#define GET_FLOAT_TYPE( t ) ( sizeof( t ) == 4 ? GL_FLOAT : GL_DOUBLE )
+#define GET_INTFLOAT_TYPE( t ) (( ((t)0.1) ? GET_FLOAT_TYPE(t) : GET_INT_TYPE(t) ))
 
-/* todo:
-- Draw the glyphs properly instead of points/lines
-- Use Uniform Buffer Objects to store glyph positions
-- Alternative rendering code for GPUs that lack the instancing extension
-- Use glBindAttribLocation instead of the GLSL layout qualifier
-*/
+#define GLYPH_INDEX_GL_TYPE GET_UINT_TYPE( GlyphIndex )
+#define POINT_INDEX_GL_TYPE GET_UINT_TYPE( PointIndex )
+#define POINT_FLAG_GL_TYPE GET_UINT_TYPE( PointFlag )
+#define POINT_COORD_GL_TYPE GET_INTFLOAT_TYPE( PointCoord )
+#define GLYPH_COORD_GL_TYPE GET_INTFLOAT_TYPE( GlyphCoord )
 
-#define GL_UINT_TYPE( t ) ( sizeof( t ) == 1 ? GL_UNSIGNED_BYTE : ( sizeof( t ) == 2 ? GL_UNSIGNED_SHORT : GL_UNSIGNED_INT ) )
-#define GL_INT_TYPE( t ) ( sizeof( t ) == 1 ? GL_BYTE : ( sizeof( t ) == 2 ? GL_SHORT : GL_INT ) )
-#define GL_FLOAT_TYPE( t ) ( sizeof( t ) == 4 ? GL_FLOAT : GL_DOUBLE )
-
+/* Uniform locations */
 static struct {
 	GLint the_matrix;
 	GLint the_color;
 	GLint fill_mode;
+	GLint coord_scale;
 } uniforms = {0};
 
 typedef enum {
@@ -32,57 +31,30 @@ typedef enum {
 	SHOW_FLAGS=3
 } FillMode;
 
-static GLuint the_prog = 0;
-static GLuint em_sq_vao = 0, em_sq_vbo = 0;
-static float const em_sq_points[4*2] = {0,0,1,0,1,1,0,1};
+/* Vertex shader attribute numbers */
+enum {
+	ATTRIB_POS=0,
+	ATTRIB_FLAG=1,
+	ATTRIB_GLYPH_POS=2
+};
 
-static void prepare_em_sq( void )
-{
-	/* prepare EM square VBO and VAO */
-	
-	glGenVertexArrays( 1, &em_sq_vao );
-	glGenBuffers( 1, &em_sq_vbo );
-	
-	glBindVertexArray( em_sq_vao );
-	
-	glBindBuffer( GL_ARRAY_BUFFER, em_sq_vbo );
-	glBufferData( GL_ARRAY_BUFFER, sizeof( em_sq_points ), em_sq_points, GL_STATIC_DRAW );
-	
-	glEnableVertexAttribArray( 0 );
-	glVertexAttribPointer( 0, 2, GL_FLOAT, GL_FALSE, 0, 0 );
-	
-	glBindVertexArray( 0 );
-}
+/* The shader program used to draw text */
+static GLuint the_prog = 0;
 
 int init_font_shader( GLuint_ linked_compiled_prog )
 {
 	int size_check[ sizeof( GLuint_ ) >= sizeof( GLuint ) ];
 	(void) size_check;
-	
-	/*
-	if ( !have_opengl_ext( "GL_ARB_draw_instanced" ) )
-	{
-		printf( "Required extension 'GL_ARB_draw_instanced' is not supported\n" );
-		return 0;
-	}
-	*/
-	
 	the_prog = linked_compiled_prog;
-	
 	glUseProgram( the_prog );
 	uniforms.the_matrix = glGetUniformLocation( the_prog, "the_matrix" );
 	uniforms.the_color = glGetUniformLocation( the_prog, "the_color" );
 	uniforms.fill_mode = glGetUniformLocation( the_prog, "fill_mode" );
-	
-	prepare_em_sq();
-	
+	uniforms.coord_scale = glGetUniformLocation( the_prog, "coordinate_scale" );
 	return 1;
 }
 
-void deinit_font_shader( void )
-{
-	glDeleteVertexArrays( 1, &em_sq_vao );
-	glDeleteBuffers( 1, &em_sq_vbo );
+void deinit_font_shader( void ) {
 	glDeleteProgram( the_prog );
 }
 
@@ -101,7 +73,7 @@ static void add_glyph_stats( Font *font, SimpleGlyph *glyph, size_t counts[3], u
 		size_t k;
 		for( k=0; k < ( glyph->num_parts ); k++ )
 		{
-			uint32 subglyph_id = *( (uint32*) glyph + 1 + k );
+			GlyphIndex subglyph_id = GET_SUBGLYPH_INDEX( glyph, k );
 			add_glyph_stats( font, font->glyphs[subglyph_id], counts, limits );
 		}
 	}
@@ -139,25 +111,28 @@ void prepare_font( Font *font )
 	stats[0], stats[1], stats[2],
 	limits[0], limits[1], limits[2] );
 	
+	glUseProgram( the_prog );
+	
 	glGenVertexArrays( 1, buf );
 	glGenBuffers( 3, buf+1 );
 	
 	glBindVertexArray( buf[0] );
-	glEnableVertexAttribArray( 0 );
-	glEnableVertexAttribArray( 1 );
-	glEnableVertexAttribArray( 2 ); /* don't have a VBO for this attribute yet */
+	glEnableVertexAttribArray( ATTRIB_POS );
+	glEnableVertexAttribArray( ATTRIB_FLAG );
+	glEnableVertexAttribArray( ATTRIB_GLYPH_POS ); /* don't have a VBO for this attribute yet */
+	glVertexAttribDivisor( ATTRIB_GLYPH_POS, 1 );
 	
 	/* point coords & indices */
 	glBindBuffer( GL_ARRAY_BUFFER, buf[1] );
 	glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, buf[2] );
-	glBufferData( GL_ARRAY_BUFFER, font->total_points * sizeof( float ) * 2, font->all_points, GL_STATIC_DRAW );
+	glBufferData( GL_ARRAY_BUFFER, font->total_points * sizeof( PointCoord ) * 2, font->all_points, GL_STATIC_DRAW );
 	glBufferData( GL_ELEMENT_ARRAY_BUFFER, font->total_indices * sizeof( PointIndex ), font->all_indices, GL_STATIC_DRAW );
-	glVertexAttribPointer( 0, 2, GL_FLOAT, GL_FALSE, 0, 0 );
+	glVertexAttribPointer( ATTRIB_POS, 2, POINT_COORD_GL_TYPE, GL_FALSE, 0, 0 );
 	
 	/* point flags */
 	glBindBuffer( GL_ARRAY_BUFFER, buf[3] );
 	glBufferData( GL_ARRAY_BUFFER, font->total_points * sizeof( PointFlag ), font->all_flags, GL_STATIC_DRAW );
-	glVertexAttribIPointer( 1, 1, GL_UINT_TYPE( PointFlag ), 0, 0 );
+	glVertexAttribIPointer( ATTRIB_FLAG, 1, POINT_FLAG_GL_TYPE, 0, 0 );
 	
 	glBindVertexArray( 0 );
 	
@@ -193,14 +168,13 @@ static void debug_color( int c )
 void begin_text( Font *font )
 {
 	glUseProgram( the_prog );
+	glUniform1f( uniforms.coord_scale, 1.0f / font->units_per_em );
 	debug_color( 0 );
 	glBindVertexArray( font->gl_buffers[0] );
-	glVertexAttribDivisor( 2, 1 );
 }
 
 void end_text( void )
 {
-	glVertexAttribDivisor( 2, 0 );
 	glBindVertexArray( 0 );
 }
 
@@ -236,22 +210,21 @@ static void draw_instances( Font *font, size_t num_instances, size_t glyph_index
 	
 	if ( flags & F_DRAW_TRIS )
 	{
-		GLenum index_type = GL_UINT_TYPE( PointIndex );
 		size_t offset = ( sizeof( PointIndex ) * ( glyph->tris.indices - font->all_indices ) );
-		uint16 n_curve = glyph->tris.num_indices_curve;
-		uint16 n_solid = glyph->tris.num_indices_solid;
+		unsigned n_curve = glyph->tris.num_indices_curve;
+		unsigned n_solid = glyph->tris.num_indices_solid;
 		
 		if ( ( flags & F_DRAW_CURVE ) && n_curve ) {
 			if ( flags & F_DEBUG_COLORS )
 				debug_color( 1 );
 			set_fill_mode( fill_curve );
-			glDrawElementsInstancedBaseVertex( GL_TRIANGLES, n_curve, index_type, (void*) offset, num_instances, first_vertex );
+			glDrawElementsInstancedBaseVertex( GL_TRIANGLES, n_curve, POINT_INDEX_GL_TYPE, (void*) offset, num_instances, first_vertex );
 		}
 		if ( ( flags & F_DRAW_SOLID ) && n_solid ) {
 			if ( flags & F_DEBUG_COLORS )
 				debug_color( 4 );
 			set_fill_mode( FILL_SOLID );
-			glDrawElementsInstancedBaseVertex( GL_TRIANGLES, n_solid, index_type, (void*)( offset + sizeof(PointIndex) * n_curve ), num_instances, first_vertex );
+			glDrawElementsInstancedBaseVertex( GL_TRIANGLES, n_solid, POINT_INDEX_GL_TYPE, (void*)( offset + sizeof(PointIndex) * n_curve ), num_instances, first_vertex );
 		}
 	}
 	
@@ -338,7 +311,7 @@ static void draw_composite_glyph( Font *font, void *glyph, size_t num_instances,
 void bind_glyph_positions( GLuint_ vbo, size_t first )
 {
 	glBindBuffer( GL_ARRAY_BUFFER, vbo );
-	glVertexAttribPointer( 2, 2, GL_FLOAT, GL_FALSE, 0, (void*)( first * 2 * sizeof( float ) ) );
+	glVertexAttribPointer( ATTRIB_GLYPH_POS, 2, GLYPH_COORD_GL_TYPE, GL_FALSE, 0, (void*)( first * 2 * sizeof( GlyphCoord ) ) );
 }
 
 void draw_glyphs( struct Font *font, float global_transform[16], size_t glyph_index, size_t num_instances, int flags )
@@ -362,13 +335,5 @@ void draw_glyphs( struct Font *font, float global_transform[16], size_t glyph_in
 		#if ENABLE_COMPOSITE_GLYPHS
 		draw_composite_glyph( font, glyph, num_instances, global_transform, flags );
 		#endif
-	}
-	
-	if ( flags & F_DRAW_SQUARE ) {
-		if ( flags & F_DEBUG_COLORS ) debug_color( 2 );
-		set_fill_mode( FILL_SOLID );
-		glBindVertexArray( em_sq_vao );
-		glDrawArraysInstancedARB( ( flags & F_ALL_SOLID ) ? GL_TRIANGLE_STRIP : GL_LINE_LOOP, 0, 4, num_instances );
-		glBindVertexArray( font->gl_buffers[0] );
 	}
 }

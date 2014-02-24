@@ -4,8 +4,10 @@
 
 const int FILL_CURVE=0, FILL_SOLID=2, SHOW_FLAGS=3;
 uniform int fill_mode = FILL_SOLID;
+
 uniform mat4 the_matrix;
 uniform vec4 the_color;
+uniform float coordinate_scale; /* converts coordinates to EM units, which are in range [0,1] */
 
 layout(location=0) in vec2 attr_pos;
 layout(location=1) in uint attr_flag;
@@ -35,7 +37,7 @@ const vec4 flag_colors[4] = vec4[4](
 
 void main()
 {
-	gl_Position = the_matrix * vec4( attr_pos + attr_instance_offset, 0.0, 1.0 );
+	gl_Position = the_matrix * vec4( coordinate_scale * ( attr_pos + attr_instance_offset ), 0.0, 1.0 );
 	tex_coord = texc_table[ attr_flag & 3u ];
 	switch( fill_mode )
 	{

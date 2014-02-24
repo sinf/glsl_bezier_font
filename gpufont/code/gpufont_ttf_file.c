@@ -207,11 +207,11 @@ static int read_contour_coord( FILE *fp, PointFlag flags, int32 co[1] )
 }
 
 /* Used by read_glyph */
-static SimpleGlyph *read_simple_glyph( FILE *fp, float units_per_em, uint16 num_contours, FontStatus status[1] )
+static SimpleGlyph *read_simple_glyph( FILE *fp, uint16 num_contours, FontStatus status[1] )
 {
 	SimpleGlyph *glyph = NULL;
 	uint16 *end_points = NULL;
-	float *final_points = NULL;
+	PointCoord *final_points = NULL;
 	uint32 num_points;
 	uint32 n;
 	int32 prev_coord;
@@ -242,7 +242,7 @@ static SimpleGlyph *read_simple_glyph( FILE *fp, float units_per_em, uint16 num_
 	}
 	
 	final_flags = malloc( MAX_GLYPH_POINTS * sizeof( PointFlag ) );
-	final_points = malloc( MAX_GLYPH_POINTS * sizeof( float ) * 2 );
+	final_points = malloc( MAX_GLYPH_POINTS * sizeof( PointCoord ) * 2 );
 	
 	if ( !final_points || !final_flags ) {
 		*status = F_FAIL_ALLOC;
@@ -305,13 +305,13 @@ static SimpleGlyph *read_simple_glyph( FILE *fp, float units_per_em, uint16 num_
 		int32 x = prev_coord;
 		if ( !read_contour_coord( fp, final_flags[n], &x ) )
 			goto error_handler;
-		final_points[2*n] = ( prev_coord = x ) / units_per_em;
+		final_points[2*n] = prev_coord = x;
 	}
 	for( prev_coord=n=0; n<num_points; n++ ) {
 		int32 y = prev_coord;
 		if ( !read_contour_coord( fp, final_flags[n]>>1, &y ) )
 			goto error_handler;
-		final_points[2*n+1] = ( prev_coord = y ) / units_per_em;
+		final_points[2*n+1] = prev_coord = y;
 		final_flags[n] &= PT_ON_CURVE; /* discard all flags except the one that matters */
 	}
 	
@@ -346,7 +346,7 @@ error_handler:;
 	return glyph;
 }
 
-static FontStatus read_glyph( FILE *fp, Font font[1], uint32 glyph_index, float units_per_em, uint32 glyph_file_pos, unsigned glyph_counts[2] )
+static FontStatus read_glyph( FILE *fp, Font font[1], uint32 glyph_index, uint32 glyph_file_pos, unsigned glyph_counts[2] )
 {
 	/* GlyphHeader */
 	struct {
@@ -376,7 +376,7 @@ static FontStatus read_glyph( FILE *fp, Font font[1], uint32 glyph_index, float 
 	}
 	else
 	{
-		font->glyphs[ glyph_index ] = read_simple_glyph( fp, units_per_em, header.num_contours, &status );
+		font->glyphs[ glyph_index ] = read_simple_glyph( fp, header.num_contours, &status );
 		glyph_counts[0] += ( status == F_SUCCESS );
 	}
 	
@@ -384,7 +384,7 @@ static FontStatus read_glyph( FILE *fp, Font font[1], uint32 glyph_index, float 
 }
 
 /* Reads both 'loca' and 'glyf' tables */
-static FontStatus read_all_glyphs( FILE *fp, Font font[1], int16 format, float units_per_em, uint32 glyph_base_offset )
+static FontStatus read_all_glyphs( FILE *fp, Font font[1], int16 format, uint32 glyph_base_offset )
 {
 	void *loca_p;
 	uint32 n = 0;
@@ -424,7 +424,7 @@ static FontStatus read_all_glyphs( FILE *fp, Font font[1], int16 format, float u
 					printf( "Reading glyph %u out of %u\n", (uint) n, (uint) font->num_glyphs );
 				
 				prev_loc = loc;
-				status = read_glyph( fp, font, n, units_per_em, (uint32) loc * 2 + glyph_base_offset, glyph_counts );
+				status = read_glyph( fp, font, n, (uint32) loc * 2 + glyph_base_offset, glyph_counts );
 				
 				if ( status != F_SUCCESS )
 					break;
@@ -456,7 +456,7 @@ static FontStatus read_all_glyphs( FILE *fp, Font font[1], int16 format, float u
 					printf( "Reading glyph %u out of %u\n", (uint) n, (uint) font->num_glyphs );
 				
 				prev_loc = loca[n];
-				status = read_glyph( fp, font, n, units_per_em, ntohl( loca[n] ) + glyph_base_offset, glyph_counts );
+				status = read_glyph( fp, font, n, ntohl( loca[n] ) + glyph_base_offset, glyph_counts );
 				
 				if ( status != F_SUCCESS )
 					break;
@@ -777,7 +777,6 @@ static FontStatus read_offset_table( FILE *fp, Font font[1] )
 	HeadTable head = {0};
 	MaxProTableOne maxp = {0};
 	HorzHeaderTable hhea = {0};
-	float units_per_em;
 	int status;
 	
 	if ( read_shorts( fp, &num_tables, 1 ) )
@@ -857,7 +856,6 @@ static FontStatus read_offset_table( FILE *fp, Font font[1] )
 	
 	num_glyphs = ntohs( maxp.num_glyphs );
 	font->units_per_em = ntohs( head.units_per_em );
-	units_per_em = font->units_per_em;
 	
 	if ( DEBUG_DUMP )
 	{
@@ -867,13 +865,13 @@ static FontStatus read_offset_table( FILE *fp, Font font[1] )
 			"Revision: %08x\n"
 			"Tables: %hu\n"
 			"head / Flags: %08hx\n"
-			"head / Units per EM: %.0f\n"
+			"head / Units per EM: %u\n"
 			"maxp 0.5 / Glyphs: %u\n",
 			(uint) ntohl( head.version ),
 			(uint) ntohl( head.font_rev ),
 			(unsigned short) num_tables,
 			ntohs( head.flags ),
-			units_per_em,
+			font->units_per_em,
 			(uint) num_glyphs );
 		if ( maxp.version == htonl( 0x10000 ) )
 		{
@@ -896,7 +894,7 @@ static FontStatus read_offset_table( FILE *fp, Font font[1] )
 		return F_FAIL_CORRUPT;
 	
 	/* Read glyph contours using tables "loca" and "glyf" */
-	status = read_all_glyphs( fp, font, head.index_to_loc_format, units_per_em, table_pos[TAB_GLYF] );
+	status = read_all_glyphs( fp, font, head.index_to_loc_format, table_pos[TAB_GLYF] );
 	if ( status != F_SUCCESS )
 		return status;
 	

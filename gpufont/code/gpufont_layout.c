@@ -10,7 +10,7 @@
 struct GlyphBuffer {
 	size_t batch_count; /* how many batches */
 	size_t total_glyphs;
-	float *positions; /* glyph position array */
+	GlyphCoord *positions; /* glyph position array */
 	GlyphIndex *glyph_indices; /* one glyph index per batch */
 	size_t *batch_len; /* length of each batch */
 	GLuint positions_vbo;
@@ -18,15 +18,15 @@ struct GlyphBuffer {
 
 typedef struct {
 	GlyphIndex glyph;
-	int32_t pos_x;
 	int32_t line_num;
+	int32_t pos_x;
 } TempChar;
 
 static void upload_positions( GlyphBuffer *buf, GLenum hint )
 {
 	glGenBuffers( 1, &buf->positions_vbo );
 	glBindBuffer( GL_ARRAY_BUFFER, buf->positions_vbo );
-	glBufferData( GL_ARRAY_BUFFER, buf->total_glyphs * 2 * sizeof( float ), buf->positions, hint );
+	glBufferData( GL_ARRAY_BUFFER, buf->total_glyphs * 2 * sizeof( buf->positions[0] ), buf->positions, hint );
 }
 
 static size_t init_glyph_positions( Font font[1], TempChar chars[], uint32_t const text[], size_t text_len, int max_line_len )
@@ -89,8 +89,8 @@ static int sort_func( const void *x, const void *y )
 */
 static int do_simple_layout_internal( struct Font *font, uint32_t const *text, size_t text_len, int max_line_len, float line_height_scale, GlyphBuffer *output, TempChar *chars )
 {
-	double em_conv = 1.0 / font->units_per_em;
-	double line_height = ( font->horz_ascender - font->horz_descender + font->horz_linegap ) * em_conv * line_height_scale;
+	const long LINEH_PREC = 10;
+	long line_height = ( ( font->horz_ascender - font->horz_descender + font->horz_linegap ) << LINEH_PREC ) * line_height_scale;
 	size_t n, num_batches, cur_batch, cur_batch_len;
 	GlyphIndex prev_glyph;
 	
@@ -118,7 +118,7 @@ static int do_simple_layout_internal( struct Font *font, uint32_t const *text, s
 	
 	if ( !output->glyph_indices )
 	{
-		output->glyph_indices = malloc( num_batches * ( sizeof( output->glyph_indices[0] ) + sizeof( size_t ) ) );
+		output->glyph_indices = malloc( num_batches * ( sizeof( output->glyph_indices[0] ) + sizeof( output->batch_len ) ) );
 		output->batch_len = (size_t*)( output->glyph_indices + num_batches );
 		
 		if ( !output->glyph_indices )
@@ -134,9 +134,9 @@ static int do_simple_layout_internal( struct Font *font, uint32_t const *text, s
 	cur_batch = cur_batch_len = 0;
 	for( n=0; n<text_len; n++ )
 	{
-		float *p = output->positions + 2 * n;
-		p[0] = chars[n].pos_x * em_conv;
-		p[1] = chars[n].line_num * line_height;
+		GlyphCoord *p = output->positions + 2 * n;
+		p[0] = chars[n].pos_x;
+		p[1] = chars[n].line_num * line_height >> LINEH_PREC;
 		
 		if ( chars[n].glyph != prev_glyph )
 		{
@@ -164,7 +164,7 @@ void draw_text_live( struct Font *font, uint32_t const *text, size_t text_len, i
 	GlyphBuffer batch;
 	GlyphIndex glyph_indices[MAX_LIVE_LEN];
 	size_t batch_len[MAX_LIVE_LEN];
-	float positions[2*MAX_LIVE_LEN];
+	GlyphCoord positions[2*MAX_LIVE_LEN];
 	TempChar chars[MAX_LIVE_LEN];
 	
 	if ( !text_len )
@@ -192,14 +192,14 @@ GlyphBuffer *do_simple_layout( struct Font *font, uint32_t const *text, size_t t
 {
 	GlyphBuffer *b = NULL;
 	TempChar *chars = NULL;
-	float *positions = NULL;
+	GlyphCoord *positions = NULL;
 	
 	if ( !text_len )
 		return &THE_EMPTY_BUFFER;
 	
 	b = malloc( sizeof(*b) );
 	chars = malloc( text_len * sizeof(*chars) );
-	positions = malloc( text_len * sizeof(float) * 2 );
+	positions = malloc( text_len * sizeof(*positions) * 2 );
 	
 	if ( !chars || !b || !positions )
 		goto error_handler;

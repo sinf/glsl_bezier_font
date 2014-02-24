@@ -1,5 +1,8 @@
 #version 130
 
+const int FILL_CURVE=0, FILL_SOLID=2, SHOW_FLAGS=3;
+uniform int fill_mode = FILL_SOLID;
+
 flat in vec4 color_above; /* color above the curve y=x² */
 flat in vec4 color_below; /* color below the curve y=x² */
 in vec2 tex_coord;
@@ -30,7 +33,7 @@ float get_coverage( float x1, float y1, float x2, float y2 )
 
 void main()
 {
-	if ( all( equal( color_above, color_below ) ) )
+	if ( fill_mode != FILL_CURVE )
 	{
 		/* Drawing solid triangles or points */
 		frag_color = color_above;

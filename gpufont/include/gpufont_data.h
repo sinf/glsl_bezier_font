@@ -8,13 +8,17 @@
 #define set_cmap_entry( font, code, glyph_index ) nibtree_set( &(font)->cmap, (code), (glyph_index) )
 #define get_cmap_entry( font, code ) nibtree_get( &(font)->cmap, (code) )
 
+/* Must be unsigned integer types: */
 typedef uint16_t PointIndex;
 typedef uint32_t GlyphIndex;
 typedef uint32_t PointFlag;
+/* Can be any types that can represent negative values: */
+typedef float PointCoord; /* for contour point coordinates */
+typedef float GlyphCoord; /* for glyph instance positions */
 
 /* Glyph outline converted to triangles */
 typedef struct GlyphTriangles {
-	float *points; /* 2 floats per point */
+	PointCoord *points; /* 2 floats per point */
 	PointFlag *flags; /* on-curve flags */
 	PointIndex *indices; /* 1. curve triangles 2. solid triangles */
 	uint16_t *end_points; /* Straight from TTF. Free'd after triangulation by ttf_file.c */
@@ -39,7 +43,7 @@ struct CompositeGlyph {
 }
 */
 
-/* Use composite glyphs using these macros: */
+/* Use composite glyphs with these macros: */
 #define GET_SUBGLYPH_COUNT(com) ((*(size_t*)(com)))
 #define GET_SUBGLYPH_INDEX(com,n) (( * (GlyphIndex*) ( (size_t*)(com) + 1 ) + (n) ))
 #define GET_SUBGLYPH_TRANSFORM(com,n) (( (float*)((GlyphIndex*)((size_t*)(com)+1) + GET_SUBGLYPH_COUNT(com)) + 6*(n) ))
@@ -65,7 +69,7 @@ typedef struct Font {
 	
 	SimpleGlyph **glyphs; /* Array of pointers to glyphs. Each glyp can be either a SimpleGlyph or a composite glyph */
 	void *all_glyphs; /* one huge array that contains all SimpleGlyphs and composite glyphs */
-	float *all_points; /* a huge array that contains all the points of all simple glyphs */
+	PointCoord *all_points; /* a huge array that contains all the points of all simple glyphs */
 	PointFlag *all_flags; /* all point flags of all simple glyphs */
 	PointIndex *all_indices; /* all triangle indices of all simple glyphs */
 	size_t total_points; /* length of all_points and all_flags */

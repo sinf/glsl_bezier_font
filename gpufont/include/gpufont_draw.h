@@ -4,7 +4,6 @@
 
 /* Draw flags. Nothing will be drawn if flags are zero */
 enum {
-	F_DRAW_SQUARE=1, /* Draw unit square (also known as EM square). Causes a performance hit due to additional state changes */
 	F_DRAW_POINTS=4, /* Draw points */
 	F_DRAW_CURVE=8, /* Draw curves */
 	F_DRAW_SOLID=32, /* Draw solid triangles */
@@ -32,7 +31,7 @@ void end_text( void );
 
 /* Actual draw calls. positions_vbo should be a VBO that has data like this: vec2 positions[num_instances] */
 void set_text_color( float color[4] );
-void bind_glyph_positions( GLuint_ vbo, size_t first ); /* The vbo should have as many vec2's as the num_instances passed to draw_glyphs. 'first' is interpreted as an index to the first vec2 */
+void bind_glyph_positions( GLuint_ vbo, size_t first ); /* The vbo should have as many PointCoord 2D vectors as the num_instances passed to draw_glyphs. 'first' is interpreted as an index to the first vec2 */
 void draw_glyphs( struct Font *font, float global_transform[16], size_t glyph_index, size_t num_instances, int flags );
 
 #endif

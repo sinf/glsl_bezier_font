@@ -47,7 +47,7 @@ static int32 the_char_code = 0;
 static uint32 the_glyph_index = 0;
 
 enum { GLYPH_ARRAY_S = 128 };
-static float the_glyph_coords[GLYPH_ARRAY_S][GLYPH_ARRAY_S][2];
+static GlyphCoord the_glyph_coords[GLYPH_ARRAY_S][GLYPH_ARRAY_S][2];
 static GLuint the_glyph_coords_vbo = 0;
 static GlyphBuffer *my_layout = NULL;
 
@@ -176,13 +176,23 @@ static int load_resources( void )
 	"sizeof(size_t) %d\n"
 	"sizeof(char) %d\n"
 	"sizeof(wchar_t) %d\n"
+	"sizeof(PointIndex) %d\n"
+	"sizeof(PointCoord) %d\n"
+	"sizeof(PointFlag) %d\n"
+	"sizeof(GlyphIndex) %d\n"
+	"sizeof(GlyphCoord) %d\n"
 	,
 	(int) sizeof(short),
 	(int) sizeof(int),
 	(int) sizeof(long),
 	(int) sizeof(size_t),
 	(int) sizeof(char),
-	(int) sizeof(wchar_t) );
+	(int) sizeof(wchar_t),
+	(int) sizeof(PointIndex),
+	(int) sizeof(PointCoord),
+	(int) sizeof(PointFlag),
+	(int) sizeof(GlyphIndex),
+	(int) sizeof(GlyphCoord) );
 	
 	if ( the_char_code )
 	{
@@ -193,7 +203,7 @@ static int load_resources( void )
 		}
 		else
 		{
-			int x, y;
+			long x, y;
 			GLuint vbo;
 			
 			printf(
@@ -207,8 +217,8 @@ static int load_resources( void )
 			{
 				for( x=0; x<GLYPH_ARRAY_S; x++ )
 				{
-					the_glyph_coords[y][x][0] = x - GLYPH_ARRAY_S / 2;
-					the_glyph_coords[y][x][1] = y - GLYPH_ARRAY_S / 2;
+					the_glyph_coords[y][x][0] = ( x - GLYPH_ARRAY_S / 2 ) * the_font.units_per_em;
+					the_glyph_coords[y][x][1] = ( y - GLYPH_ARRAY_S / 2 ) * the_font.units_per_em;
 				}
 			}
 			
@@ -314,7 +324,7 @@ static void repaint( void )
 			glyph_draw_flags = F_DRAW_TRIS | F_DEBUG_COLORS | F_DRAW_POINTS;
 			break;
 		case 2:
-			glyph_draw_flags = F_DRAW_POINTS | F_DEBUG_COLORS | F_DRAW_SQUARE;
+			glyph_draw_flags = F_DRAW_POINTS | F_DEBUG_COLORS;
 			break;
 		default:
 			assert(0);

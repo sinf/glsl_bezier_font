@@ -51,7 +51,7 @@ int merge_glyph_data( Font *font )
 	size_t total_indices = 0;
 	size_t total_glyphs_mem = 0;
 	char *all_glyphs=NULL, *glyph_p;
-	float *all_points=NULL, *point_p;
+	PointCoord *all_points=NULL, *point_p;
 	PointIndex *all_indices=NULL, *index_p;
 	PointFlag *all_flags=NULL, *flag_p;
 	size_t n;

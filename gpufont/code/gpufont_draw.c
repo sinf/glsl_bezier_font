@@ -94,10 +94,15 @@ void prepare_font( Font *font )
 	int size_check[ sizeof( font->gl_buffers[0] ) >= sizeof( GLuint ) ];
 	GLuint *buf = font->gl_buffers;
 	unsigned stats[3], limits[3];
+	size_t all_data_size;
 	
 	(void) size_check;
 	
 	get_average_glyph_stats( font, stats, limits );
+	
+	all_data_size = font->total_points * sizeof( PointCoord ) * 2;
+	all_data_size += font->total_indices * sizeof( PointIndex );
+	all_data_size += font->total_points * sizeof( PointFlag );
 	
 	printf(
 	"Uploading font to GL\n"
@@ -107,9 +112,12 @@ void prepare_font( Font *font )
 	"Maximum counts:\n"
 	"    Points: %u\n"
 	"    Indices: %u curved, %u solid\n"
+	"Total memory uploaded to GL: %u bytes\n"
 	,
 	stats[0], stats[1], stats[2],
-	limits[0], limits[1], limits[2] );
+	limits[0], limits[1], limits[2],
+	(unsigned) all_data_size
+	);
 	
 	glUseProgram( the_prog );
 	

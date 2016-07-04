@@ -1,0 +1,4 @@
+WASD, nuolet = kameran siirtely
+n = cull mode
+m = render mode
+

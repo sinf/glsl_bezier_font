@@ -1,0 +1,4 @@
+Platform/Encoding IDs:               http://www.microsoft.com/typography/otspec/name.htm
+cmap formats:                        https://developer.apple.com/fonts/ttrefman/rm06/Chap6cmap.html
+GLU stuff                            http://www.glprogramming.com/red/chapter11.html
+Information about composite glyphs:  http://www.fontforge.org/Composites/index.html

@@ -1,0 +1,59 @@
+Todo List
+
+Un-subdivide over-tesselated geometry
+	- If deleting 2 off-curve points and making the point between them be on-curve doesn't affect shape of the contour, then do so
+	- seems like a common problem. Times New Roman and DroidSerif-Regular have it
+
+Composite glyphs
+	font_file.c: make sure that composite glyph doesn't refer to itself (could cause infinite recursion)
+	font_file.c: store subglyph offsets as 4x4 matrices for more efficient rendering
+	* Need to find a font that actually uses composite glyphs
+
+More flexible text encoding support (currently only unicode works)
+	* Need to find a font that has other encoding tables than unicode
+
+UTF-32
+	Make sure 32-bit unicode works as expected
+	Need to add support for another cmap format
+
+nice API for choosing different text encoding tables (gpufont_ttf_file.c)
+gpufont_layout.c: more abstract API
+gpufont_layout.c: make newline not be hard-coded
+
+gpufont_ttf_file.c: bullet proof against malformatted data
+gpufont_ttf_file.c: optimize performance
+	Try to avoid reformatting/converting/reordering data, and use TTF structs directly
+	Try to reduce malloc() calls
+
+triangulator.c: optimize performance
+	- takes 3/4ths of total font loading time
+	- figure out why it is slow
+	- get rid of reallocs, memcpys and triangle index arrays. Instead, write triangle indices directly to their final destination
+
+gpufont_draw.c, triangulator.c: Make it be a generic vector art triangulator (remove font_data.h/font_file.c dependency)
+triangulator.c: Remove hardcoded maximum point/index limits (same goes for font_file.c)
+
+gpufont_data.c:
+	Get rid of merge_font_data() altogether.
+	Instead, allocate a giant block of memory (20MB?) before reading the font and use that instead.
+	Finally, realloc the block to the size actually needed
+
+figure out why gcc flag -Ofast causes triangulator.c to produce incorrect geometry
+
+optimize font rendering (maybe there's too many state changes or draw calls)
+font_shader.c: auto-detect maximum instance batch size based on available GPU memory
+use Uniform Buffer Objects to store glyph positions (instead of reuploading them all the time)
+measure rendering performance (calculate average microseconds / frame)
+
+organize this to-do list better
+
+
+triangulator libraries:
+libtess2 https://code.google.com/p/libtess2/source/checkout
+GPC http://www.cs.man.ac.uk/~toby/alan/software/
+GLU
+http://vterrain.org/Implementation/Libs/triangulate.html
+https://stackoverflow.com/questions/406301/polygon-triangulation-with-holes
+https://www.cs.cmu.edu/~quake/triangle.html
+http://realmike.org/blog/articles/triangulating-and-extruding-arbitrary-polygons/
+http://www.gamedev.net/topic/584914-polygon-tessellationtriangulation-implementations/

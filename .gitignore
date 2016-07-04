@@ -1,0 +1,7 @@
+.sconsign.dblite
+build/*
+gpufont/build/*
+gpufont/libgpufont.a
+camera.dat
+fontdemo
+

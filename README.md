@@ -1,5 +1,6 @@
 # glsl_bezier_font
 Implementation of GPU font rendering similar to https://developer.nvidia.com/gpugems/gpugems3/part-iv-image-effects/chapter-25-rendering-vector-art-gpu
-Use case: render thousands of high resolution chinese characters with minimal video memory footprint. Antialiased
-Arho Mahlamäki, 2014
+![pic](screenshots/Screenshot_20200527_154519.png)
+![pic](screenshots/Screenshot_20200527_154612.png)
+![pic](screenshots/Screenshot_20200527_154649.png)
 
